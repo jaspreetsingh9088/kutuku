@@ -15,9 +15,20 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.DeliveryDining
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.LocalShipping
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Receipt
-import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.ShoppingBag
+import androidx.compose.material.icons.outlined.TaskAlt
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
+import com.yourstore.app.ui.theme.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -40,7 +51,6 @@ import com.yourstore.app.data.model.OrderSummary
 import com.yourstore.app.data.model.ReasonReq
 import com.yourstore.app.ui.components.*
 import com.yourstore.app.ui.nav.Routes
-import com.yourstore.app.ui.theme.Discount
 import kotlinx.coroutines.launch
 
 // ---------------- Orders list ----------------
@@ -74,35 +84,23 @@ class OrdersViewModel : ViewModel() {
 fun OrdersScreen(navigate: (String) -> Unit, vm: OrdersViewModel = viewModel()) {
     LaunchedEffect(Unit) { vm.reload() }
     val list = rememberLazyListState()
+    val cartCount by ShopApp.container.cartCount.collectAsState()
     val nearEnd by remember { derivedStateOf { list.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= list.layoutInfo.totalItemsCount - 3 } ?: false } }
     LaunchedEffect(nearEnd) { if (nearEnd) vm.loadMore() }
 
-    Scaffold(topBar = { AppTopBar("My orders") }) { pad ->
+    Scaffold(containerColor = Color.White, topBar = {
+        AppTopBar("My Order") { CircleIconButton(Icons.Outlined.ShoppingBag, "Cart", { navigate(Routes.CART) }, badge = cartCount) }
+    }) { pad ->
         Column(Modifier.padding(pad)) {
-            TabRow(selectedTabIndex = if (vm.tab == "current") 0 else 1) {
-                Tab(vm.tab == "current", { vm.select("current") }, text = { Text("Active") })
-                Tab(vm.tab == "past", { vm.select("past") }, text = { Text("Past orders") })
-            }
+            UnderlineTabs(listOf("My Order", "History"), if (vm.tab == "current") 0 else 1, { vm.select(if (it == 0) "current" else "past") })
             PullToRefreshBox(isRefreshing = vm.refreshing, onRefresh = { vm.reload(true) }, modifier = Modifier.fillMaxSize()) {
                 when {
                     vm.items.isEmpty() && vm.loading -> LoadingBox()
                     vm.items.isEmpty() && vm.error != null -> ErrorState(vm.error!!, { vm.reload() })
-                    vm.items.isEmpty() -> EmptyState(Icons.AutoMirrored.Outlined.ReceiptLong, if (vm.tab == "current") "No active orders" else "No past orders", "Orders you place will show up here", "Start shopping") { navigate(Routes.HOME) }
-                    else -> LazyColumn(state = list, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(vm.items, key = { it.id }) { o ->
-                            Card(onClick = { navigate(Routes.order(o.id)) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    NetImage(o.image, Modifier.size(60.dp).clip(RoundedCornerShape(10.dp)))
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(o.firstItem.orEmpty() + if (o.itemCount > 1) " +${o.itemCount - 1} more" else "", maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
-                                        Text("#${o.orderNumber} · ${formatDate(o.createdAt, false)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Spacer(Modifier.height(6.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) { StatusChip(o.status); Spacer(Modifier.weight(1f)); Text(inr(o.total), fontWeight = FontWeight.Bold) }
-                                    }
-                                }
-                            }
-                        }
+                    vm.items.isEmpty() -> EmptyState(Icons.Outlined.LocalShipping, if (vm.tab == "current") "No active orders" else "No past orders",
+                        "Orders you place will show up here", "Start Shopping") { navigate(Routes.HOME) }
+                    else -> LazyColumn(state = list, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        items(vm.items, key = { it.id }) { o -> OrderCard(o, navigate) }
                         if (vm.loading) item { LoadingBox(Modifier.fillMaxWidth().padding(16.dp)) }
                     }
                 }
@@ -110,6 +108,56 @@ fun OrdersScreen(navigate: (String) -> Unit, vm: OrdersViewModel = viewModel()) 
         }
     }
 }
+
+/** Kit order card: image, title, details, status pill, price, then Detail / Tracking buttons. */
+@Composable
+private fun OrderCard(o: OrderSummary, navigate: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).border(1.dp, Line, RoundedCornerShape(14.dp)).padding(12.dp)) {
+        Row {
+            NetImage(o.image, Modifier.size(72.dp).clip(RoundedCornerShape(10.dp)))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.Top) {
+                    Text(o.firstItem.orEmpty(), style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedStatus(o.status)
+                }
+                Text(buildAnnotatedLabel("Order: ", "#${o.orderNumber}"), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(buildAnnotatedLabel("Items: ", "${o.itemCount}"), fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    PriceTag(o.total, size = 17)
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PillButton("Detail", { navigate(Routes.order(o.id)) }, outlined = true, color = Ink, modifier = Modifier.weight(1f).height(44.dp))
+            PillButton("Tracking", { navigate(Routes.order(o.id)) }, modifier = Modifier.weight(1f).height(44.dp))
+        }
+    }
+}
+
+@Composable
+private fun buildAnnotatedLabel(label: String, value: String) = androidx.compose.ui.text.buildAnnotatedString {
+    withStyle(androidx.compose.ui.text.SpanStyle(color = InkMuted)) { append(label) }
+    withStyle(androidx.compose.ui.text.SpanStyle(color = Ink)) { append(value) }
+}
+
+/** Outlined status pill, e.g. "On Progress" in teal as in the kit. */
+@Composable
+private fun OutlinedStatus(status: String) {
+    val (label, color) = when (status) {
+        "delivered" -> "Delivered" to Discount
+        "cancelled" -> "Cancelled" to Warning
+        "returned" -> "Returned" to InkMuted
+        "shipped", "out_for_delivery" -> prettyStatus(status) to Brand
+        else -> "On Progress" to Teal
+    }
+    Text(label, color = color, fontSize = 11.sp, fontWeight = FontWeight.Medium,
+        modifier = Modifier.border(1.dp, color, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
+}
+
+private val Teal = Color(0xFF14A3B8)
 
 // ---------------- Order detail ----------------
 class OrderDetailViewModel(private val id: Int) : ViewModel() {
@@ -167,73 +215,72 @@ fun OrderDetailScreen(id: Int, navigate: (String) -> Unit, onBack: () -> Unit) {
     var showCancel by remember { mutableStateOf(false) }
     val o = vm.order
 
-    Scaffold(topBar = { AppTopBar(o?.let { "Order #${it.orderNumber}" } ?: "Order", onBack) }, snackbarHost = { SnackbarHost(snack) }) { pad ->
+    Scaffold(containerColor = Color.White, topBar = { AppTopBar("Order Tracking", onBack) }, snackbarHost = { SnackbarHost(snack) }) { pad ->
         when {
             vm.error != null && o == null -> ErrorState(vm.error!!, vm::load, Modifier.padding(pad))
             o == null -> LoadingBox(Modifier.padding(pad).fillMaxSize())
-            else -> Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Placed on ${formatDate(o.createdAt)}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                            StatusChip(o.status)
+            else -> Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                // Order header card (like the courier card in the kit)
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).border(1.dp, Line, RoundedCornerShape(14.dp)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(46.dp).clip(RoundedCornerShape(10.dp)).background(BrandSoft), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.Inventory2, null, tint = Brand)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("#${o.orderNumber}", style = MaterialTheme.typography.titleSmall)
+                        Text(formatDate(o.createdAt), style = MaterialTheme.typography.bodySmall)
+                    }
+                    StatusChip(o.status)
+                }
+
+                Text("Progress of your Order", style = MaterialTheme.typography.titleMedium)
+                if (o.status in STEPS) Tracker(o) else Column {
+                    Text(if (o.status == "cancelled") "This order was cancelled" else prettyStatus(o.status), fontWeight = FontWeight.SemiBold)
+                    o.cancelReason?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    if (o.refundAmount > 0) Text("Refunded ${inr(o.refundAmount)}", color = Discount, fontSize = 13.sp)
+                }
+
+                Text("Products (${o.items.size})", style = MaterialTheme.typography.titleMedium)
+                o.items.forEach { it ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        NetImage(it.imageUrl, Modifier.size(60.dp).clip(RoundedCornerShape(10.dp)))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(it.productName, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text("${it.variantLabel} · Qty ${it.quantity}", style = MaterialTheme.typography.bodySmall)
                         }
-                        Spacer(Modifier.height(12.dp))
-                        if (o.status in STEPS) Tracker(o) else {
-                            Text(if (o.status == "cancelled") "This order was cancelled" else prettyStatus(o.status), fontWeight = FontWeight.SemiBold)
-                            o.cancelReason?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            if (o.refundAmount > 0) Text("Refunded ${inr(o.refundAmount)}", color = Discount, style = MaterialTheme.typography.bodySmall)
-                        }
+                        PriceTag(it.lineTotal, size = 16)
                     }
                 }
 
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Items", style = MaterialTheme.typography.titleMedium)
-                        o.items.forEach { it ->
-                            Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                NetImage(it.imageUrl, Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)))
-                                Spacer(Modifier.width(10.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(it.productName, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    Text("${it.variantLabel} · Qty ${it.quantity} × ${inr(it.unitPrice)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Text(inr(it.lineTotal), fontWeight = FontWeight.Medium)
-                            }
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Field).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row { Text("Subtotal", Modifier.weight(1f), color = InkMuted); Text(inr(o.subtotal)) }
+                    if (o.discount > 0) Row { Text("Coupon ${o.couponCode.orEmpty()}", Modifier.weight(1f), color = InkMuted); Text("− ${inr(o.discount)}", color = Discount) }
+                    Row { Text("Shipping", Modifier.weight(1f), color = InkMuted); Text(if (o.deliveryCharge > 0) inr(o.deliveryCharge) else "FREE") }
+                    DashedDivider(Modifier.padding(vertical = 4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) { Text("Total amount", Modifier.weight(1f), color = InkMuted); PriceTag(o.total, size = 19) }
+                    Row(verticalAlignment = Alignment.CenterVertically) { Text("Payment", Modifier.weight(1f), color = InkMuted); StatusChip(o.paymentStatus) }
+                }
+
+                Column {
+                    Text("Delivery address", style = MaterialTheme.typography.titleMedium)
+                    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.Top) {
+                        Box(Modifier.size(40.dp).clip(CircleShape).background(Tile), contentAlignment = Alignment.Center) { Icon(Icons.Outlined.LocationOn, null, tint = Ink) }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(o.shippingAddress.name, style = MaterialTheme.typography.titleSmall)
+                            Text(o.shippingAddress.oneLine(), style = MaterialTheme.typography.bodySmall)
+                            Text("Phone: ${o.shippingAddress.phone}", style = MaterialTheme.typography.bodySmall)
                         }
-                    }
-                }
-
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Payment summary", style = MaterialTheme.typography.titleMedium)
-                        Row { Text("Item total", Modifier.weight(1f)); Text(inr(o.subtotal)) }
-                        if (o.discount > 0) Row { Text("Coupon ${o.couponCode.orEmpty()}", Modifier.weight(1f)); Text("− ${inr(o.discount)}", color = Discount) }
-                        Row { Text("Delivery", Modifier.weight(1f)); Text(if (o.deliveryCharge > 0) inr(o.deliveryCharge) else "FREE") }
-                        HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                        Row { Text("Total", Modifier.weight(1f), fontWeight = FontWeight.Bold); Text(inr(o.total), fontWeight = FontWeight.Bold) }
-                        Row(verticalAlignment = Alignment.CenterVertically) { Text("Payment", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant); StatusChip(o.paymentStatus) }
-                    }
-                }
-
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Delivery address", style = MaterialTheme.typography.titleMedium)
-                        Text(o.shippingAddress.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
-                        Text(o.shippingAddress.oneLine())
-                        Text("Phone: ${o.shippingAddress.phone}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 
                 if (o.paymentStatus in listOf("paid", "refunded", "partially_refunded")) {
-                    OutlinedButton(onClick = { downloadInvoice(context, o) }, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Outlined.Receipt, null); Spacer(Modifier.width(8.dp)); Text("Download GST invoice (PDF)")
-                    }
+                    PillButton("Download GST Invoice", { downloadInvoice(context, o) }, outlined = true, icon = Icons.Outlined.Receipt, modifier = Modifier.fillMaxWidth())
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (o.canCancel) OutlinedButton(onClick = { showCancel = true }, enabled = !vm.busy, modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Cancel order") }
-                    Button(onClick = { vm.reorder { navigate(Routes.CART) } }, enabled = !vm.busy, modifier = Modifier.weight(1f)) { Text("Reorder") }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(bottom = 16.dp)) {
+                    if (o.canCancel) PillButton("Cancel Order", { showCancel = true }, outlined = true, color = Warning, enabled = !vm.busy, modifier = Modifier.weight(1f))
+                    PillButton("Reorder", { vm.reorder { navigate(Routes.CART) } }, enabled = !vm.busy, modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -243,18 +290,20 @@ fun OrderDetailScreen(id: Int, navigate: (String) -> Unit, onBack: () -> Unit) {
         var reason by remember { mutableStateOf("Changed my mind") }
         val reasons = listOf("Changed my mind", "Ordered by mistake", "Found a better price", "Delivery is taking too long", "Other")
         AlertDialog(
-            onDismissRequest = { showCancel = false },
+            onDismissRequest = { showCancel = false }, containerColor = Color.White,
             title = { Text("Cancel this order?") },
             text = {
                 Column {
-                    Text("Why are you cancelling?", style = MaterialTheme.typography.bodyMedium)
+                    Text("Why are you cancelling?", color = InkMuted)
                     reasons.forEach { r ->
-                        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(reason == r, { reason = r }); Text(r) }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(reason == r, { reason = r }, colors = RadioButtonDefaults.colors(selectedColor = Brand)); Text(r)
+                        }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { vm.cancel(reason); showCancel = false }) { Text("Cancel order", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { showCancel = false }) { Text("Keep order") } },
+            confirmButton = { TextButton(onClick = { vm.cancel(reason); showCancel = false }) { Text("Cancel order", color = Warning) } },
+            dismissButton = { TextButton(onClick = { showCancel = false }) { Text("Keep order", color = Ink) } },
         )
     }
 }
@@ -263,19 +312,21 @@ fun OrderDetailScreen(id: Int, navigate: (String) -> Unit, onBack: () -> Unit) {
 private fun Tracker(o: OrderDetail) {
     val current = STEPS.indexOf(o.status)
     val times = o.timeline.associate { it.status to it.createdAt }
+    val icons = listOf(Icons.Outlined.ReceiptLong, Icons.Outlined.TaskAlt, Icons.Outlined.Inventory2, Icons.Outlined.LocalShipping, Icons.Outlined.DeliveryDining, Icons.Outlined.Home)
     Column {
         STEPS.forEachIndexed { i, step ->
             val done = i <= current
             Row {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(Modifier.size(14.dp).clip(CircleShape).background(if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant))
-                    if (i < STEPS.lastIndex) Box(Modifier.width(2.dp).height(28.dp).background(if (i < current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant))
+                    Box(Modifier.size(38.dp).clip(CircleShape).background(if (done) Brand else Tile), contentAlignment = Alignment.Center) {
+                        Icon(icons[i], null, tint = if (done) Color.White else InkHint, modifier = Modifier.size(18.dp))
+                    }
+                    if (i < STEPS.lastIndex) Box(Modifier.width(2.dp).height(22.dp).background(if (i < current) Brand else Line))
                 }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.offset(y = (-3).dp)) {
-                    Text(prettyStatus(step), fontWeight = if (i == current) FontWeight.Bold else FontWeight.Normal,
-                        color = if (done) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
-                    times[step]?.let { Text(formatDate(it), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.padding(top = 2.dp)) {
+                    Text(prettyStatus(step), style = MaterialTheme.typography.titleSmall, color = if (done) Ink else InkHint)
+                    Text(times[step]?.let { formatDate(it) } ?: if (done) "" else "Pending", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -285,15 +336,18 @@ private fun Tracker(o: OrderDetail) {
 // ---------------- Success ----------------
 @Composable
 fun OrderSuccessScreen(id: Int, onViewOrder: () -> Unit, onContinue: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Icon(Icons.Filled.CheckCircle, null, tint = Discount, modifier = Modifier.size(96.dp))
-        Spacer(Modifier.height(16.dp))
-        Text("Order placed!", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("Thank you for shopping with us. We'll notify you when your order is on its way.", textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
-        Spacer(Modifier.height(28.dp))
-        Button(onClick = onViewOrder, modifier = Modifier.fillMaxWidth().height(50.dp)) { Text("View order") }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = onContinue, modifier = Modifier.fillMaxWidth().height(50.dp)) { Text("Continue shopping") }
+    Column(Modifier.fillMaxSize().background(Color.White).padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Box(Modifier.size(190.dp).clip(CircleShape).background(BrandLight), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(110.dp).clip(CircleShape).background(Brand), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(56.dp))
+            }
+        }
+        Spacer(Modifier.height(32.dp))
+        Text("Order Successfully", style = MaterialTheme.typography.headlineSmall)
+        Text("Your order will be packed by the store and we'll notify you at every step until it reaches your door.",
+            textAlign = TextAlign.Center, color = InkMuted, modifier = Modifier.padding(top = 10.dp))
+        Spacer(Modifier.height(36.dp))
+        PillButton("Order Tracking", onViewOrder, modifier = Modifier.fillMaxWidth())
+        TextButton(onClick = onContinue, modifier = Modifier.padding(top = 8.dp)) { Text("Continue Shopping", color = Brand) }
     }
 }

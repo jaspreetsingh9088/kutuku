@@ -6,8 +6,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.border
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ShoppingBag
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MarkEmailRead
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
+import com.yourstore.app.ui.components.HaloIcon
+import com.yourstore.app.ui.components.KField
+import com.yourstore.app.ui.components.PillButton
+import com.yourstore.app.ui.theme.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -72,63 +85,81 @@ class LoginViewModel : ViewModel() {
 fun LoginScreen(onLoggedIn: (isNew: Boolean) -> Unit, vm: LoginViewModel = viewModel()) {
     val context = LocalContext.current
     Column(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).imePadding().padding(24.dp),
+        Modifier.fillMaxSize().background(Color.White).statusBarsPadding().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 24.dp),
     ) {
-        Spacer(Modifier.height(48.dp))
-        Box(Modifier.size(64.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
-            Icon(Icons.Filled.ShoppingBag, null, tint = Color.White, modifier = Modifier.size(34.dp))
-        }
-        Spacer(Modifier.height(24.dp))
-        Text(if (vm.otpSent) "Verify your number" else "Welcome!", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text(
-            if (vm.otpSent) "Enter the 6-digit code sent to +91 ${vm.mobile}" else "Log in or sign up with your mobile number",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(28.dp))
-
         if (!vm.otpSent) {
-            OutlinedTextField(
-                value = vm.mobile,
-                onValueChange = { v -> vm.mobile = v.filter(Char::isDigit).take(10); vm.error = null },
-                label = { Text("Mobile number") },
-                prefix = { Text("+91 ") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                modifier = Modifier.fillMaxWidth(),
+            Spacer(Modifier.height(40.dp))
+            Text("Login Account", style = MaterialTheme.typography.headlineMedium)
+            Text("Please login with your registered mobile number", color = InkHint, modifier = Modifier.padding(top = 6.dp))
+            Spacer(Modifier.height(32.dp))
+            KField(
+                label = "Phone Number", value = vm.mobile,
+                onChange = { v -> vm.mobile = v.filter(Char::isDigit).take(10); vm.error = null },
+                placeholder = "Enter your phone number", icon = Icons.Outlined.PhoneAndroid,
+                prefix = "+91 ", keyboardType = KeyboardType.Phone, error = vm.error,
             )
-            Spacer(Modifier.height(16.dp))
-            Button(onClick = vm::sendOtp, enabled = !vm.busy && vm.mobile.length == 10, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                if (vm.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White) else Text("Get OTP")
-            }
+            Text("We'll send a 6-digit code to verify it's you. New here? Your account is created automatically.",
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
+            Spacer(Modifier.height(32.dp))
+            PillButton("Sign In", onClick = vm::sendOtp, enabled = vm.mobile.length == 10, loading = vm.busy, modifier = Modifier.fillMaxWidth())
         } else {
-            OutlinedTextField(
-                value = vm.otp,
-                onValueChange = { v ->
-                    vm.otp = v.filter(Char::isDigit).take(6); vm.error = null
-                    if (vm.otp.length == 6 && !vm.busy) vm.verify(context, onLoggedIn)
-                },
-                label = { Text("OTP") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(16.dp))
-            Button(onClick = { vm.verify(context, onLoggedIn) }, enabled = !vm.busy && vm.otp.length == 6, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                if (vm.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White) else Text("Verify & continue")
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { vm.otpSent = false; vm.otp = ""; vm.error = null }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Ink) }
+                Text("Verification", style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(48.dp))
             }
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { vm.otpSent = false; vm.otp = "" }) { Text("Change number") }
-                TextButton(onClick = vm::sendOtp, enabled = vm.resendIn == 0 && !vm.busy) {
-                    Text(if (vm.resendIn > 0) "Resend in ${vm.resendIn}s" else "Resend OTP")
+            Spacer(Modifier.height(32.dp))
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { HaloIcon(Icons.Filled.MarkEmailRead, Brand) }
+            Spacer(Modifier.height(24.dp))
+            Text("Verification Code", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            Text("We have sent the verification code to\n+91 ${vm.mobile}", color = InkMuted, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+            Spacer(Modifier.height(28.dp))
+            OtpBoxes(vm.otp) { v ->
+                vm.otp = v.filter(Char::isDigit).take(6); vm.error = null
+                if (vm.otp.length == 6 && !vm.busy) vm.verify(context, onLoggedIn)
+            }
+            vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) }
+            Spacer(Modifier.height(28.dp))
+            PillButton("Verify & Continue", onClick = { vm.verify(context, onLoggedIn) }, enabled = vm.otp.length == 6, loading = vm.busy, modifier = Modifier.fillMaxWidth())
+            Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Text("Didn't receive the code? ", color = InkMuted)
+                TextButton(onClick = vm::sendOtp, enabled = vm.resendIn == 0 && !vm.busy, contentPadding = PaddingValues(4.dp)) {
+                    Text(if (vm.resendIn > 0) "Resend in ${vm.resendIn}s" else "Resend", color = if (vm.resendIn > 0) InkHint else Brand)
                 }
             }
         }
-        vm.error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.weight(1f))
         Text(
             "By continuing you agree to our Terms of Service and Privacy Policy.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 24.dp),
+            style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
         )
     }
+}
+
+/** Six rounded boxes showing the OTP digits; a hidden text field captures input. */
+@Composable
+private fun OtpBoxes(value: String, onChange: (String) -> Unit) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    BasicTextField(
+        value = value, onValueChange = onChange,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+        modifier = Modifier.focusRequester(focus),
+        decorationBox = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
+                repeat(6) { i ->
+                    val ch = value.getOrNull(i)?.toString() ?: ""
+                    val active = i == value.length
+                    Box(
+                        Modifier.size(46.dp, 54.dp).clip(RoundedCornerShape(12.dp))
+                            .background(if (ch.isNotEmpty()) BrandSoft else Field)
+                            .border(1.dp, if (active) Brand else Line, RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) { Text(ch, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Ink) }
+                }
+            }
+        },
+    )
 }

@@ -14,8 +14,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
-import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -39,6 +40,7 @@ import com.yourstore.app.data.model.Product
 import com.yourstore.app.data.model.ProfileReq
 import com.yourstore.app.ui.components.*
 import com.yourstore.app.ui.nav.Routes
+import com.yourstore.app.ui.theme.*
 import kotlinx.coroutines.launch
 
 // ---------------- Account ----------------
@@ -53,51 +55,56 @@ class AccountViewModel : ViewModel() {
 @Composable
 fun AccountScreen(navigate: (String) -> Unit, vm: AccountViewModel = viewModel()) {
     LaunchedEffect(Unit) { vm.load() }
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
     var confirmLogout by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     val me = vm.me
-    Scaffold(topBar = { AppTopBar("My account") }) { pad ->
-        Column(Modifier.padding(pad).verticalScroll(rememberScrollState())) {
-            Row(Modifier.fillMaxWidth().clickable { navigate(Routes.profileEdit()) }.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(56.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
-                    Text((me?.name?.firstOrNull() ?: 'U').uppercase(), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+    Scaffold(containerColor = Color.White, topBar = { AppTopBar("Settings") }) { pad ->
+        Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+            // Profile header
+            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(56.dp).background(BrandLight, CircleShape), contentAlignment = Alignment.Center) {
+                    Text((me?.name?.firstOrNull() ?: 'U').uppercase(), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Brand)
                 }
-                Spacer(Modifier.width(16.dp))
+                Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(me?.name ?: "Add your name", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(me?.let { "+91 ${it.mobile}" } ?: "", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    me?.email?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
+                    Text(me?.name ?: "Add your name", style = MaterialTheme.typography.titleMedium)
+                    Text(me?.let { "+91 ${it.mobile}" } ?: "", style = MaterialTheme.typography.bodySmall)
                 }
-                Text("Edit", color = MaterialTheme.colorScheme.primary)
             }
-            HorizontalDivider()
-            MenuItem(Icons.AutoMirrored.Outlined.ReceiptLong, "My orders") { navigate(Routes.ORDERS) }
-            MenuItem(Icons.Outlined.FavoriteBorder, "My wishlist") { navigate(Routes.WISHLIST) }
-            MenuItem(Icons.Outlined.LocationOn, "Saved addresses") { navigate(Routes.ADDRESSES) }
-            MenuItem(Icons.Outlined.Payments, "Payment history") { navigate(Routes.PAYMENTS) }
-            HorizontalDivider()
-            MenuItem(Icons.AutoMirrored.Outlined.Logout, "Log out") { confirmLogout = true }
-            MenuItem(Icons.Outlined.DeleteForever, "Delete my account", tint = MaterialTheme.colorScheme.error) { confirmDelete = true }
-            Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(20.dp))
+            Text("General", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp, bottom = 10.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SettingRow(Icons.Outlined.Person, "Edit Profile") { navigate(Routes.profileEdit()) }
+                SettingRow(Icons.Outlined.LocationOn, "Saved Addresses") { navigate(Routes.ADDRESSES) }
+                SettingRow(Icons.Outlined.LocalShipping, "My Orders") { navigate(Routes.ORDERS) }
+                SettingRow(Icons.Outlined.Payments, "Payment History") { navigate(Routes.PAYMENTS) }
+                SettingRow(Icons.Outlined.Language, "Language", value = "English") { }
+            }
+            Text("Preferences", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SettingRow(Icons.Outlined.Shield, "Legal and Policies") { runCatching { uri.openUri(BuildConfig.API_BASE_URL + "privacy") } }
+                SettingRow(Icons.AutoMirrored.Outlined.HelpOutline, "Help & Support") { runCatching { uri.openUri("mailto:support@kutuku.app") } }
+                SettingRow(Icons.AutoMirrored.Outlined.Logout, "Logout", tint = Warning) { confirmLogout = true }
+                SettingRow(Icons.Outlined.DeleteForever, "Delete Account", tint = Warning) { confirmDelete = true }
+            }
+            Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 20.dp))
         }
     }
-    if (confirmLogout) AlertDialog(onDismissRequest = { confirmLogout = false }, title = { Text("Log out?") },
-        confirmButton = { TextButton(onClick = { confirmLogout = false; vm.logout() }) { Text("Log out") } },
-        dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("Cancel") } })
-    if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, title = { Text("Delete your account?") },
-        text = { Text("Your profile, addresses, cart and wishlist will be permanently deleted. Order records are kept for tax purposes. This cannot be undone.") },
-        confirmButton = { TextButton(onClick = { confirmDelete = false; vm.deleteAccount() }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } })
+    if (confirmLogout) KDialog("Logout", "Are you sure you want to log out of your account?", "Yes, Logout", { confirmLogout = false; vm.logout() }) { confirmLogout = false }
+    if (confirmDelete) KDialog("Delete your account?",
+        "Your profile, addresses, cart and wishlist will be permanently deleted. Order records are kept for tax purposes. This cannot be undone.",
+        "Delete", { confirmDelete = false; vm.deleteAccount() }) { confirmDelete = false }
 }
 
+/** Confirmation dialog in the kit's style (Logout sheet): title, message, red primary + outlined cancel. */
 @Composable
-private fun MenuItem(icon: ImageVector, text: String, tint: Color? = null, onClick: () -> Unit) {
-    ListItem(
-        leadingContent = { Icon(icon, null, tint = tint ?: MaterialTheme.colorScheme.onSurfaceVariant) },
-        headlineContent = { Text(text, color = tint ?: MaterialTheme.colorScheme.onSurface) },
-        trailingContent = { Icon(Icons.Filled.ChevronRight, null) },
-        modifier = Modifier.clickable(onClick = onClick),
+private fun KDialog(title: String, text: String, confirm: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss, containerColor = Color.White,
+        title = { Text(title, style = MaterialTheme.typography.titleLarge) },
+        text = { Text(text, color = InkMuted) },
+        confirmButton = { PillButton(confirm, onConfirm, color = Warning, modifier = Modifier.height(44.dp)) },
+        dismissButton = { PillButton("Cancel", onDismiss, outlined = true, color = Ink, modifier = Modifier.height(44.dp)) },
     )
 }
 
@@ -121,16 +128,27 @@ class ProfileEditViewModel : ViewModel() {
 
 @Composable
 fun ProfileEditScreen(onboarding: Boolean, onDone: () -> Unit, onBack: () -> Unit, vm: ProfileEditViewModel = viewModel()) {
-    Scaffold(topBar = { AppTopBar(if (onboarding) "Complete your profile" else "Edit profile", if (onboarding) null else onBack) }) { pad ->
-        Column(Modifier.padding(pad).padding(16.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (onboarding) Text("Tell us your name so we can personalise your experience.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(vm.name, { vm.name = it }, label = { Text("Full name *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(vm.email, { vm.email = it }, label = { Text("Email (for invoices)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
-            OutlinedTextField(vm.gstin, { vm.gstin = it.uppercase().take(15) }, label = { Text("GSTIN (optional, for business invoices)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Button(onClick = { vm.save(onDone) }, enabled = !vm.saving, modifier = Modifier.fillMaxWidth().height(50.dp)) { Text(if (vm.saving) "Saving…" else if (onboarding) "Continue" else "Save") }
-            if (onboarding) TextButton(onClick = onDone, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Skip for now") }
+    Scaffold(
+        containerColor = Color.White,
+        topBar = { AppTopBar(if (onboarding) "Complete Profile" else "Edit Profile", if (onboarding) null else onBack) },
+        bottomBar = {
+            Column(Modifier.navigationBarsPadding().padding(20.dp)) {
+                PillButton(if (onboarding) "Continue" else "Save Changes", { vm.save(onDone) }, loading = vm.saving, modifier = Modifier.fillMaxWidth())
+                if (onboarding) TextButton(onClick = onDone, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Skip for now", color = InkMuted) }
+            }
+        },
+    ) { pad ->
+        Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(96.dp).background(BrandLight, CircleShape), contentAlignment = Alignment.Center) {
+                    Text((vm.name.firstOrNull() ?: 'U').uppercase(), fontSize = 38.sp, fontWeight = FontWeight.Bold, color = Brand)
+                }
+            }
+            if (onboarding) Text("Tell us your name so we can personalise your experience.", color = InkMuted)
+            KField("Full Name", vm.name, { vm.name = it }, "Enter your name", Icons.Outlined.Person)
+            KField("Email (for invoices)", vm.email, { vm.email = it }, "Enter your email", Icons.Outlined.Email, keyboardType = KeyboardType.Email)
+            KField("GSTIN (optional)", vm.gstin, { vm.gstin = it.uppercase().take(15) }, "For business invoices", Icons.Outlined.Business)
+            vm.error?.let { Text(it, color = Warning) }
         }
     }
 }
@@ -145,17 +163,41 @@ class WishlistViewModel : ViewModel() {
 }
 
 @Composable
-fun WishlistScreen(navigate: (String) -> Unit, onBack: () -> Unit, vm: WishlistViewModel = viewModel()) {
+fun WishlistScreen(navigate: (String) -> Unit, onBack: (() -> Unit)?, vm: WishlistViewModel = viewModel()) {
     LaunchedEffect(Unit) { vm.load() }
-    Scaffold(topBar = { AppTopBar("My wishlist", onBack) }) { pad ->
-        val items = vm.items
-        when {
-            items == null && vm.error != null -> ErrorState(vm.error!!, vm::load, Modifier.padding(pad))
-            items == null -> LoadingBox(Modifier.padding(pad).fillMaxSize())
-            items.isEmpty() -> Box(Modifier.padding(pad)) { EmptyState(Icons.Outlined.FavoriteBorder, "Your wishlist is empty", "Tap the heart on any product to save it here", "Browse products") { navigate(Routes.HOME) } }
-            else -> LazyVerticalGrid(GridCells.Adaptive(156.dp), Modifier.padding(pad), contentPadding = PaddingValues(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(items, key = { it.id }) { p -> ProductCard(p, onClick = { navigate(Routes.product(p.id)) }, onWishlist = { vm.remove(it) }) }
+    var query by remember { mutableStateOf("") }
+    var sort by remember { mutableStateOf<String?>(null) }
+    Scaffold(containerColor = Color.White, topBar = { AppTopBar("My Favorite", onBack) }) { pad ->
+        val all = vm.items
+        Column(Modifier.padding(pad)) {
+            OutlinedTextField(
+                value = query, onValueChange = { query = it }, singleLine = true,
+                placeholder = { Text("Search something...", color = InkHint) },
+                leadingIcon = { Icon(Icons.Outlined.Search, null, tint = Ink) },
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Brand),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            )
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(null to "All", "latest" to "Latest", "price_asc" to "Cheapest", "price_desc" to "Highest Price").forEach { (k, l) -> PillChip(l, sort == k, { sort = k }) }
+            }
+            when {
+                all == null && vm.error != null -> ErrorState(vm.error!!, vm::load)
+                all == null -> LoadingBox()
+                all.isEmpty() -> EmptyState(Icons.Outlined.FavoriteBorder, "No favorites yet", "Tap the heart on any product to save it here", "Browse Products") { navigate(Routes.HOME) }
+                else -> {
+                    val shown = all.filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }.let { l ->
+                        when (sort) {
+                            "price_asc" -> l.sortedBy { it.price ?: 0.0 }
+                            "price_desc" -> l.sortedByDescending { it.price ?: 0.0 }
+                            else -> l
+                        }
+                    }
+                    LazyVerticalGrid(GridCells.Fixed(2), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                        items(shown, key = { it.id }) { p -> ProductCard(p, onClick = { navigate(Routes.product(p.id)) }, onWishlist = { vm.remove(it) }) }
+                    }
+                }
             }
         }
     }
@@ -171,7 +213,7 @@ class PaymentsViewModel : ViewModel() {
 
 @Composable
 fun PaymentsScreen(navigate: (String) -> Unit, onBack: () -> Unit, vm: PaymentsViewModel = viewModel()) {
-    Scaffold(topBar = { AppTopBar("Payment history", onBack) }) { pad ->
+    Scaffold(containerColor = Color.White, topBar = { AppTopBar("Payment History", onBack) }) { pad ->
         val items = vm.items
         when {
             items == null && vm.error != null -> ErrorState(vm.error!!, vm::load, Modifier.padding(pad))
@@ -180,12 +222,13 @@ fun PaymentsScreen(navigate: (String) -> Unit, onBack: () -> Unit, vm: PaymentsV
             else -> LazyColumn(Modifier.padding(pad)) {
                 items(items, key = { it.id }) { p ->
                     ListItem(
-                        headlineContent = { Text("Order #${p.orderNumber}") },
+                        colors = ListItemDefaults.colors(containerColor = Color.White),
+                        headlineContent = { Text("Order #${p.orderNumber}", style = MaterialTheme.typography.titleSmall) },
                         supportingContent = { Text(formatDate(p.createdAt) + (p.providerPaymentId?.let { "\n$it" } ?: "")) },
                         trailingContent = { Column(horizontalAlignment = Alignment.End) { Text(inr(p.amount), fontWeight = FontWeight.Bold); StatusChip(p.status) } },
                         modifier = Modifier.clickable { navigate(Routes.order(p.orderId)) },
                     )
-                    HorizontalDivider()
+                    HorizontalDivider(color = Line)
                 }
             }
         }

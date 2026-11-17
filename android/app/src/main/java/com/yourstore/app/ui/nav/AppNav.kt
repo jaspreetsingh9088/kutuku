@@ -18,7 +18,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.yourstore.app.ShopApp
+import com.yourstore.app.ui.theme.Brand
+import com.yourstore.app.ui.theme.InkHint
 import com.yourstore.app.ui.account.*
 import com.yourstore.app.ui.address.AddressFormScreen
 import com.yourstore.app.ui.address.AddressListScreen
@@ -37,10 +42,9 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 
 private val TABS = listOf(
     Tab(Routes.HOME, "Home", Icons.Outlined.Home, Icons.Filled.Home),
-    Tab(Routes.CATEGORIES, "Categories", Icons.Outlined.GridView, Icons.Filled.GridView),
-    Tab(Routes.CART, "Cart", Icons.Outlined.ShoppingCart, Icons.Filled.ShoppingCart),
-    Tab(Routes.ORDERS, "Orders", Icons.AutoMirrored.Outlined.ReceiptLong, Icons.AutoMirrored.Outlined.ReceiptLong),
-    Tab(Routes.ACCOUNT, "Account", Icons.Outlined.Person, Icons.Filled.Person),
+    Tab(Routes.ORDERS, "My Order", Icons.Outlined.LocalShipping, Icons.Filled.LocalShipping),
+    Tab(Routes.WISHLIST, "Favorite", Icons.Outlined.FavoriteBorder, Icons.Filled.Favorite),
+    Tab(Routes.ACCOUNT, "My Profile", Icons.Outlined.Person, Icons.Filled.Person),
 )
 
 /** Deep-link target from a push notification. */
@@ -52,7 +56,6 @@ fun AppNav(deepLink: DeepLink?, onDeepLinkHandled: () -> Unit) {
     val nav = rememberNavController()
     val loggedIn by c.loggedIn.collectAsState()
     val startDestination = remember { if (c.loggedIn.value) Routes.HOME else Routes.LOGIN }
-    val cartCount by c.cartCount.collectAsState()
     val snack = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) { c.refreshCartCount() }
@@ -80,17 +83,18 @@ fun AppNav(deepLink: DeepLink?, onDeepLinkHandled: () -> Unit) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snack) },
         bottomBar = {
-            if (route in Routes.topLevel) NavigationBar {
+            if (route in Routes.topLevel) NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
                 TABS.forEach { t ->
                     val sel = route == t.route
                     NavigationBarItem(
                         selected = sel,
                         onClick = { nav.switchTab(t.route) },
-                        icon = {
-                            if (t.route == Routes.CART && cartCount > 0) BadgedBox(badge = { Badge { Text("$cartCount") } }) { Icon(if (sel) t.selectedIcon else t.icon, t.label) }
-                            else Icon(if (sel) t.selectedIcon else t.icon, t.label)
-                        },
-                        label = { Text(t.label) },
+                        icon = { Icon(if (sel) t.selectedIcon else t.icon, t.label) },
+                        label = { Text(t.label, fontSize = 11.sp) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Brand, selectedTextColor = Brand, indicatorColor = Color.Transparent,
+                            unselectedIconColor = InkHint, unselectedTextColor = InkHint,
+                        ),
                     )
                 }
             }
@@ -104,7 +108,7 @@ fun AppNav(deepLink: DeepLink?, onDeepLinkHandled: () -> Unit) {
             }
             composable(Routes.HOME) { HomeScreen(go) }
             composable(Routes.CATEGORIES) { CategoriesScreen(go) }
-            composable(Routes.CART) { CartScreen(go) }
+            composable(Routes.CART) { CartScreen(go, { nav.popBackStack() }) }
             composable(Routes.ORDERS) { OrdersScreen(go) }
             composable(Routes.ACCOUNT) { AccountScreen(go) }
 
@@ -152,7 +156,7 @@ fun AppNav(deepLink: DeepLink?, onDeepLinkHandled: () -> Unit) {
                     onViewOrder = { nav.navigate(Routes.order(id)) { popUpTo(Routes.CART) } },
                     onContinue = { nav.switchTab(Routes.HOME) })
             }
-            composable(Routes.WISHLIST) { WishlistScreen(go, { nav.popBackStack() }) }
+            composable(Routes.WISHLIST) { WishlistScreen(go, null) }
             composable(Routes.PAYMENTS) { PaymentsScreen(go, { nav.popBackStack() }) }
             composable(Routes.PROFILE_EDIT, arguments = listOf(navArgument("onboarding") { type = NavType.BoolType; defaultValue = false })) { e ->
                 val onboarding = e.arguments!!.getBoolean("onboarding")

@@ -29,6 +29,7 @@ data class Category(
     val name: String = "",
     val slug: String = "",
     val imageUrl: String? = null,
+    val productCount: Int = 0,
     val children: List<Category>? = null,
 )
 

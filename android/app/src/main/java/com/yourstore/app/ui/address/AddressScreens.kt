@@ -7,8 +7,23 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.Place
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
+import com.yourstore.app.ui.theme.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,38 +62,49 @@ fun AddressListScreen(navigate: (String) -> Unit, onBack: () -> Unit, vm: Addres
     LaunchedEffect(Unit) { vm.load() }
     var confirm by remember { mutableStateOf<Address?>(null) }
     Scaffold(
-        topBar = { AppTopBar("Saved addresses", onBack) },
-        floatingActionButton = { ExtendedFloatingActionButton(onClick = { navigate(Routes.addressForm()) }, icon = { Icon(Icons.Filled.Add, null) }, text = { Text("Add address") }) },
+        containerColor = Color.White,
+        topBar = { AppTopBar("Address", onBack) },
+        bottomBar = { PillButton("Add New Address", { navigate(Routes.addressForm()) }, icon = Icons.Filled.Add, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(20.dp)) },
     ) { pad ->
         val list = vm.list
         when {
             list == null && vm.error != null -> ErrorState(vm.error!!, vm::load, Modifier.padding(pad))
             list == null -> LoadingBox(Modifier.padding(pad).fillMaxSize())
             list.isEmpty() -> Box(Modifier.padding(pad)) { EmptyState(Icons.Outlined.LocationOn, "No saved addresses", "Add an address for faster checkout") }
-            else -> LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 88.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            else -> LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                item {
+                    Text("Your locations", style = MaterialTheme.typography.titleMedium)
+                    Text("Addresses you've saved for delivery.", color = InkMuted, modifier = Modifier.padding(top = 4.dp))
+                }
                 items(list, key = { it.id }) { a ->
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.padding(16.dp)) {
+                    val def = a.isDefault == 1
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).border(1.dp, if (def) Brand else Line, RoundedCornerShape(14.dp)).padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(a.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                if (a.isDefault == 1) AssistChip(onClick = {}, label = { Text("Default") })
+                                Text(a.name, style = MaterialTheme.typography.titleSmall)
+                                if (def) Text("Default", color = Brand, fontSize = 11.sp, modifier = Modifier.padding(start = 8.dp).clip(CircleShape).background(BrandSoft).padding(horizontal = 8.dp, vertical = 2.dp))
                             }
-                            Text(a.oneLine())
-                            Text("Phone: ${a.phone}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Row {
-                                TextButton(onClick = { navigate(Routes.addressForm(a.id)) }) { Text("Edit") }
-                                TextButton(onClick = { confirm = a }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                            Text(a.oneLine(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                            Text("Phone: ${a.phone}", style = MaterialTheme.typography.bodySmall)
+                            Row(Modifier.padding(top = 6.dp)) {
+                                Text("Edit", color = Brand, fontSize = 13.sp, modifier = Modifier.clickable { navigate(Routes.addressForm(a.id)) }.padding(end = 16.dp, top = 4.dp, bottom = 4.dp))
+                                Text("Delete", color = Warning, fontSize = 13.sp, modifier = Modifier.clickable { confirm = a }.padding(vertical = 4.dp))
                             }
                         }
+                        Box(Modifier.size(54.dp).clip(CircleShape).background(if (def) BrandSoft else Tile).border(2.dp, if (def) Brand else Color.Transparent, CircleShape),
+                            contentAlignment = Alignment.Center) { Icon(Icons.Filled.LocationOn, null, tint = if (def) Brand else InkHint) }
                     }
                 }
             }
         }
     }
     confirm?.let { a ->
-        AlertDialog(onDismissRequest = { confirm = null }, title = { Text("Delete address?") }, text = { Text(a.oneLine()) },
-            confirmButton = { TextButton(onClick = { vm.delete(a); confirm = null }) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = { confirm = null }) { Text("Cancel") } })
+        AlertDialog(onDismissRequest = { confirm = null }, containerColor = Color.White, title = { Text("Delete address?") }, text = { Text(a.oneLine(), color = InkMuted) },
+            confirmButton = { TextButton(onClick = { vm.delete(a); confirm = null }) { Text("Delete", color = Warning) } },
+            dismissButton = { TextButton(onClick = { confirm = null }) { Text("Cancel", color = Ink) } })
     }
 }
 
@@ -133,42 +159,46 @@ fun AddressFormScreen(id: Int?, onBack: () -> Unit) {
     val vm: AddressFormViewModel = viewModel(key = "addr-$id") { AddressFormViewModel(id) }
     var stateOpen by remember { mutableStateOf(false) }
     Scaffold(
-        topBar = { AppTopBar(if (id == null) "Add address" else "Edit address", onBack) },
-        bottomBar = {
-            Surface(shadowElevation = 8.dp) {
-                Button(onClick = { vm.save(onBack) }, enabled = !vm.saving, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp).height(50.dp)) {
-                    Text(if (vm.saving) "Saving…" else "Save address")
-                }
-            }
-        },
+        containerColor = Color.White,
+        topBar = { AppTopBar(if (id == null) "Add Address" else "Edit Address", onBack) },
+        bottomBar = { PillButton("Confirm", { vm.save(onBack) }, loading = vm.saving, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(20.dp)) },
     ) { pad ->
-        Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).imePadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            @Composable fun F(label: String, value: String, key: String, kb: KeyboardType = KeyboardType.Text, onChange: (String) -> Unit) =
-                OutlinedTextField(value, onChange, label = { Text(label) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                    isError = vm.fieldError(key) != null, supportingText = vm.fieldError(key)?.let { { Text(it) } },
-                    keyboardOptions = KeyboardOptions(keyboardType = kb))
-            F("Full name *", vm.name, "name") { vm.name = it }
-            F("Phone number *", vm.phone, "phone", KeyboardType.Phone) { vm.phone = it.filter(Char::isDigit).take(10) }
-            F("House no., building, street *", vm.line1, "line1") { vm.line1 = it }
-            F("Area, locality", vm.line2, "line2") { vm.line2 = it }
-            F("Landmark", vm.landmark, "landmark") { vm.landmark = it }
+        Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("Choose your location", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+            Text("Enter the delivery address where you'd like your order delivered.", color = InkMuted, modifier = Modifier.offset(y = (-10).dp))
+            KField("Full Name", vm.name, { vm.name = it }, "Recipient's name", Icons.Outlined.Person, error = vm.fieldError("name"))
+            KField("Phone Number", vm.phone, { vm.phone = it.filter(Char::isDigit).take(10) }, "10-digit mobile number", Icons.Outlined.PhoneAndroid,
+                keyboardType = KeyboardType.Phone, prefix = "+91 ", error = vm.fieldError("phone"))
+            KField("House no., building, street", vm.line1, { vm.line1 = it }, "e.g. H.No 12, Sector 70", Icons.Outlined.Home, error = vm.fieldError("line1"))
+            KField("Area, locality", vm.line2, { vm.line2 = it }, "Optional", Icons.Outlined.Map)
+            KField("Landmark", vm.landmark, { vm.landmark = it }, "Optional", Icons.Outlined.Place)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(Modifier.weight(1f)) { F("City *", vm.city, "city") { vm.city = it } }
-                Box(Modifier.weight(1f)) { F("Pincode *", vm.pincode, "pincode", KeyboardType.Number) { vm.pincode = it.filter(Char::isDigit).take(6) } }
+                KField("City", vm.city, { vm.city = it }, "City", error = vm.fieldError("city"), modifier = Modifier.weight(1f))
+                KField("Pincode", vm.pincode, { vm.pincode = it.filter(Char::isDigit).take(6) }, "6 digits", keyboardType = KeyboardType.Number,
+                    error = vm.fieldError("pincode"), modifier = Modifier.weight(1f))
             }
-            ExposedDropdownMenuBox(expanded = stateOpen, onExpandedChange = { stateOpen = it }) {
-                OutlinedTextField(vm.state, {}, readOnly = true, label = { Text("State *") }, isError = vm.fieldError("state") != null,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(stateOpen) },
-                    modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable))
-                ExposedDropdownMenu(expanded = stateOpen, onDismissRequest = { stateOpen = false }) {
-                    INDIAN_STATES.forEach { s -> DropdownMenuItem(text = { Text(s) }, onClick = { vm.state = s; stateOpen = false }) }
+            Column {
+                Text("State", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(8.dp))
+                ExposedDropdownMenuBox(expanded = stateOpen, onExpandedChange = { stateOpen = it }) {
+                    OutlinedTextField(vm.state, {}, readOnly = true, placeholder = { Text("Select state", color = InkHint) }, isError = vm.fieldError("state") != null,
+                        leadingIcon = { Icon(Icons.Outlined.LocationOn, null, tint = InkHint) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(stateOpen) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = Field, focusedContainerColor = Color.White, unfocusedBorderColor = Line, focusedBorderColor = Brand),
+                        modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable))
+                    ExposedDropdownMenu(expanded = stateOpen, onDismissRequest = { stateOpen = false }) {
+                        INDIAN_STATES.forEach { st -> DropdownMenuItem(text = { Text(st) }, onClick = { vm.state = st; stateOpen = false }) }
+                    }
                 }
+                vm.fieldError("state")?.let { Text(it, color = Warning, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, start = 4.dp)) }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(vm.isDefault, { vm.isDefault = it })
+                Checkbox(vm.isDefault, { vm.isDefault = it }, colors = CheckboxDefaults.colors(checkedColor = Brand))
                 Text("Make this my default address")
             }
-            vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            vm.error?.let { Text(it, color = Warning) }
+            Spacer(Modifier.height(8.dp))
         }
     }
 }

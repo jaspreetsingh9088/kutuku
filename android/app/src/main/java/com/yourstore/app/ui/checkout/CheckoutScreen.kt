@@ -8,8 +8,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Payments
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
+import com.yourstore.app.ui.theme.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -115,20 +125,19 @@ fun CheckoutScreen(coupon: String?, navigate: (String) -> Unit, onSuccess: (Int)
     val cart = vm.cart
 
     Scaffold(
-        topBar = { AppTopBar("Checkout", onBack) },
+        containerColor = Color.White,
+        topBar = { AppTopBar("Payment", onBack) },
         bottomBar = {
-            if (cart != null && cart.items.isNotEmpty()) Surface(shadowElevation = 8.dp) {
-                Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp, 12.dp)) {
-                    vm.payError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp)) }
-                    Button(
-                        onClick = { context.findActivity()?.let { vm.pay(it, storeName) } },
-                        enabled = !vm.paying && vm.selectedId != null && cart.problems.isEmpty(),
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                    ) {
-                        if (vm.paying) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                        else { Icon(Icons.Outlined.Lock, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Pay ${inr(cart.summary.total)} securely") }
-                    }
+            if (cart != null && cart.items.isNotEmpty()) Column(Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
+                vm.payError?.let { Text(it, color = Warning, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp)) }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
+                    Text("Total amount", color = InkMuted, modifier = Modifier.weight(1f))
+                    PriceTag(cart.summary.total, size = 22)
                 }
+                PillButton(
+                    "Checkout Now", onClick = { context.findActivity()?.let { vm.pay(it, storeName) } },
+                    enabled = vm.selectedId != null && cart.problems.isEmpty(), loading = vm.paying, modifier = Modifier.fillMaxWidth(),
+                )
             }
         },
     ) { pad ->
@@ -136,44 +145,61 @@ fun CheckoutScreen(coupon: String?, navigate: (String) -> Unit, onSuccess: (Int)
             vm.error != null -> ErrorState(vm.error!!, vm::load, Modifier.padding(pad).fillMaxSize())
             cart == null || vm.addresses == null -> LoadingBox(Modifier.padding(pad).fillMaxSize())
             cart.items.isEmpty() -> ErrorState("Your cart is empty", null, Modifier.padding(pad).fillMaxSize())
-            else -> Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Deliver to", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { navigate(Routes.addressForm()) }) { Icon(Icons.Filled.Add, null, Modifier.size(18.dp)); Text("Add new") }
+            else -> Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("Address", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    Text("Add New", color = Brand, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clickable { navigate(Routes.addressForm()) }.padding(4.dp))
+                }
+                val list = vm.addresses.orEmpty()
+                if (list.isEmpty()) Text("Add a delivery address to continue", color = InkMuted)
+                list.forEach { a ->
+                    val sel = vm.selectedId == a.id
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).border(1.dp, if (sel) Brand else Line, RoundedCornerShape(14.dp))
+                            .selectable(selected = sel, onClick = { vm.selectedId = a.id }).padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.size(64.dp).clip(RoundedCornerShape(10.dp)).background(if (sel) BrandSoft else Tile), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.LocationOn, null, tint = if (sel) Brand else InkHint, modifier = Modifier.size(28.dp))
                         }
-                        val list = vm.addresses.orEmpty()
-                        if (list.isEmpty()) Text("Add a delivery address to continue", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        list.forEach { a ->
-                            Row(
-                                Modifier.fillMaxWidth().selectable(selected = vm.selectedId == a.id, onClick = { vm.selectedId = a.id }).padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.Top,
-                            ) {
-                                RadioButton(selected = vm.selectedId == a.id, onClick = { vm.selectedId = a.id })
-                                Column(Modifier.weight(1f).padding(top = 12.dp)) {
-                                    Text(a.name, fontWeight = FontWeight.SemiBold)
-                                    Text(a.oneLine(), style = MaterialTheme.typography.bodySmall)
-                                    Text("Phone: ${a.phone}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                TextButton(onClick = { navigate(Routes.addressForm(a.id)) }) { Text("Edit") }
-                            }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(a.name, style = MaterialTheme.typography.titleSmall)
+                            Text(a.oneLine(), style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                            Text("Edit", color = Brand, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp).clickable { navigate(Routes.addressForm(a.id)) })
                         }
+                        RadioButton(selected = sel, onClick = { vm.selectedId = a.id }, colors = RadioButtonDefaults.colors(selectedColor = Brand, unselectedColor = Line))
                     }
                 }
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Order items (${cart.summary.itemCount})", style = MaterialTheme.typography.titleMedium)
-                        cart.items.forEach { Row(Modifier.padding(top = 6.dp)) {
-                            Text("${it.name} · ${it.label} × ${it.quantity}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                            Text(inr(it.lineTotal), style = MaterialTheme.typography.bodySmall)
-                        } }
-                        cart.problems.forEach { Text("• ${it.message}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+
+                Text("Products (${cart.summary.itemCount})", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+                cart.items.forEach { it ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        NetImage(it.image, Modifier.size(64.dp).clip(RoundedCornerShape(10.dp)))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(it.name, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                            Text("${it.label} · Qty ${it.quantity}", style = MaterialTheme.typography.bodySmall)
+                        }
+                        PriceTag(it.lineTotal, size = 16)
                     }
+                }
+                cart.problems.forEach { Text("• ${it.message}", color = Warning, fontSize = 13.sp) }
+
+                Text("Payment Method", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).border(1.dp, Line, RoundedCornerShape(14.dp)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(44.dp).clip(CircleShape).background(Field), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.Payments, null, tint = Brand)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Razorpay", style = MaterialTheme.typography.titleSmall)
+                        Text("UPI · Cards · Net Banking · Wallets", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Icon(Icons.Outlined.Lock, null, tint = InkHint, modifier = Modifier.size(18.dp))
                 }
                 BillSummary(cart.summary)
-                Text("Payments are processed securely by Razorpay. UPI, cards, net banking and wallets are supported.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
             }
         }
     }

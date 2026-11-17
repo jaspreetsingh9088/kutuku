@@ -34,5 +34,6 @@ object Routes {
     fun profileEdit(onboarding: Boolean = false) = "profile_edit?onboarding=$onboarding"
     const val PAYMENTS = "payments"
 
-    val topLevel = setOf(HOME, CATEGORIES, CART, ORDERS, ACCOUNT)
+    // Bottom navigation, as in the Kutuku design: Home · My Order · Favorite · My Profile
+    val topLevel = setOf(HOME, ORDERS, WISHLIST, ACCOUNT)
 }

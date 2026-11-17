@@ -26,7 +26,10 @@ router.get('/home', optionalCustomer, ah(async (req, res) => {
   const data = await remember('home', 60, async () => {
     const [banners, categories, featured, popular, latest] = await Promise.all([
       db.query('SELECT id, title, description, image_url, redirect_type, redirect_value FROM banners WHERE is_active = 1 ORDER BY display_order, id'),
-      db.query('SELECT id, name, slug, image_url FROM categories WHERE is_active = 1 AND parent_id IS NULL ORDER BY display_order, name'),
+      db.query(`SELECT c.id, c.name, c.slug, c.image_url,
+        (SELECT COUNT(*) FROM products p WHERE p.is_active = 1
+           AND (p.category_id = c.id OR p.category_id IN (SELECT id FROM categories s WHERE s.parent_id = c.id))) AS product_count
+        FROM categories c WHERE c.is_active = 1 AND c.parent_id IS NULL ORDER BY c.display_order, c.name`),
       listProducts('p.is_featured = 1', [], 'p.updated_at DESC', 10),
       listProducts('', [], 'p.sold_count DESC, p.id DESC', 10),
       listProducts('', [], 'p.created_at DESC', 10),
@@ -44,7 +47,12 @@ router.get('/home', optionalCustomer, ah(async (req, res) => {
 
 router.get('/categories', ah(async (_req, res) => {
   const tree = await remember('categories', 300, async () => {
-    const rows = await db.query('SELECT id, parent_id, name, slug, image_url, display_order FROM categories WHERE is_active = 1 ORDER BY display_order, name');
+    const rows = await db.query(
+      `SELECT c.id, c.parent_id, c.name, c.slug, c.image_url, c.display_order,
+         (SELECT COUNT(*) FROM products p WHERE p.is_active = 1
+            AND (p.category_id = c.id OR p.category_id IN (SELECT id FROM categories s WHERE s.parent_id = c.id))) AS product_count
+       FROM categories c WHERE c.is_active = 1 ORDER BY c.display_order, c.name`
+    );
     const roots = rows.filter((r) => !r.parent_id).map((r) => ({ ...r, children: [] }));
     const map = Object.fromEntries(roots.map((r) => [r.id, r]));
     rows.filter((r) => r.parent_id && map[r.parent_id]).forEach((r) => map[r.parent_id].children.push(r));
