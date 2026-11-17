@@ -120,7 +120,7 @@ Then set `PUBLIC_URL=https://api.yourstore.com` and `CORS_ORIGINS=https://admin.
 **Play Console checklist:** privacy policy URL (`https://api.yourstore.com/privacy`) · Data safety form (collects phone number, name, email, address, purchase history; shared with payment processor; deletion available in-app) · Content rating questionnaire · Target audience · App access instructions for reviewers (give them a test mobile number; you can whitelist one with a fixed OTP) · Screenshots (phone, at least 2) · 512×512 icon · 1024×500 feature graphic.
 
 ### Live preview on Vercel (admin panel + API)
-One Vercel project serves the admin panel and the API on the same domain (`vercel.json` + `api/index.js` at the repo root). The Android app can't run on Vercel; point its `API_BASE_URL` at the Vercel domain to test it against the live API.
+**Live preview: https://kutuku-seven.vercel.app** (TiDB Cloud Starter in Singapore, `DEMO_MODE=1`). One Vercel project serves the admin panel and the API on the same domain (`vercel.json` + `api/index.js` at the repo root). The Android app can't run on Vercel; point its `API_BASE_URL` at the Vercel domain to test it against the live API.
 
 1. **Create a free MySQL database.** [TiDB Cloud Starter](https://tidbcloud.com) works well: create a free instance (Singapore, to match the `sin1` Vercel region in `vercel.json`), run `CREATE DATABASE shop;` in its SQL Editor, and copy the connection string (`mysql://USER:PASSWORD@HOST:4000/shop`). Aiven's free MySQL also works.
 2. **Import the GitHub repo in Vercel:** New Project → pick the repo → keep the root directory as `/`. The framework preset can stay "Other". `vercel.json` sets the build.

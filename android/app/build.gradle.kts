@@ -44,12 +44,12 @@ android {
 
     buildTypes {
         debug {
-            // Android emulator reaches the host machine at 10.0.2.2
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:4000/\"")
+            // Live preview API on Vercel. For a local backend on the emulator use "http://10.0.2.2:4000/"
+            buildConfigField("String", "API_BASE_URL", "\"https://kutuku-seven.vercel.app/\"")
             applicationIdSuffix = ".debug"
         }
         release {
-            buildConfigField("String", "API_BASE_URL", "\"https://api.yourstore.com/\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://kutuku-seven.vercel.app/\"")  // change to the production API domain at launch
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
