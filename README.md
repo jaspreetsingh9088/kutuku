@@ -122,7 +122,7 @@ Then set `PUBLIC_URL=https://api.yourstore.com` and `CORS_ORIGINS=https://admin.
 ### Live preview on Vercel (admin panel + API)
 One Vercel project serves the admin panel and the API on the same domain (`vercel.json` + `api/index.js` at the repo root). The Android app can't run on Vercel; point its `API_BASE_URL` at the Vercel domain to test it against the live API.
 
-1. **Create a free MySQL database.** [TiDB Cloud Serverless](https://tidbcloud.com) works well: create a cluster, then a database named `shop`, and copy the connection string (`mysql://USER:PASSWORD@HOST:4000/shop`). Aiven's free MySQL also works.
+1. **Create a free MySQL database.** [TiDB Cloud Starter](https://tidbcloud.com) works well: create a free instance (Singapore, to match the `sin1` Vercel region in `vercel.json`), run `CREATE DATABASE shop;` in its SQL Editor, and copy the connection string (`mysql://USER:PASSWORD@HOST:4000/shop`). Aiven's free MySQL also works.
 2. **Import the GitHub repo in Vercel:** New Project → pick the repo → keep the root directory as `/`. The framework preset can stay "Other". `vercel.json` sets the build.
 3. **Add environment variables** (Settings → Environment Variables):
 

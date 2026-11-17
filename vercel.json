@@ -1,5 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": [
+    "sin1"
+  ],
   "installCommand": "npm install && npm install --prefix admin",
   "buildCommand": "npm run build --prefix admin",
   "outputDirectory": "admin/dist",
@@ -10,12 +13,27 @@
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.js" },
-    { "source": "/privacy", "destination": "/api/index.js" },
-    { "source": "/health", "destination": "/api/index.js" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/health",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ],
   "crons": [
-    { "path": "/api/v1/cron/sweep", "schedule": "0 3 * * *" }
+    {
+      "path": "/api/v1/cron/sweep",
+      "schedule": "0 3 * * *"
+    }
   ]
 }

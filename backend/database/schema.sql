@@ -81,8 +81,7 @@ CREATE TABLE IF NOT EXISTS products (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
   INDEX idx_prod_cat (category_id),
-  INDEX idx_prod_active (is_active, created_at),
-  FULLTEXT KEY ft_prod (name, description)
+  INDEX idx_prod_active (is_active, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS product_images (
