@@ -1,15 +1,21 @@
 const router = require('express').Router();
 const { z } = require('zod');
+const bcrypt = require('bcryptjs');
 const db = require('../../config/db');
-const { ah, validate, notFound } = require('../../utils/http');
+const { ah, validate, notFound, badRequest } = require('../../utils/http');
 const { customerAuth } = require('../../middleware/auth');
+const { imageUpload, storeImages } = require('../../middleware/upload');
+
+const PROFILE_COLS = `id, mobile, name, email, gstin, avatar_url, created_at, password_hash IS NOT NULL AS has_password,
+  notif_payment, notif_tracking, notif_complete, notif_general`;
 
 router.use(customerAuth);
 
 router.get('/', ah(async (req, res) => {
-  const c = await db.one('SELECT id, mobile, name, email, gstin, created_at FROM customers WHERE id = ?', [req.customer.id]);
+  const c = await db.one(`SELECT ${PROFILE_COLS} FROM customers WHERE id = ?`, [req.customer.id]);
   const stats = await db.one("SELECT COUNT(*) AS orders FROM orders WHERE customer_id = ? AND status <> 'pending_payment'", [req.customer.id]);
-  res.json({ ...c, order_count: stats.orders });
+  const unread = await db.one('SELECT COUNT(*) AS n FROM notifications WHERE customer_id = ? AND is_read = 0', [req.customer.id]);
+  res.json({ ...c, has_password: !!c.has_password, order_count: stats.orders, unread_notifications: unread.n });
 }));
 
 router.put('/', validate(z.object({
@@ -18,8 +24,39 @@ router.put('/', validate(z.object({
   gstin: z.string().trim().max(20).optional().or(z.literal('')),
 })), ah(async (req, res) => {
   const { name, email, gstin } = req.body;
-  await db.query('UPDATE customers SET name = ?, email = ?, gstin = ? WHERE id = ?', [name, email || null, gstin || null, req.customer.id]);
-  res.json(await db.one('SELECT id, mobile, name, email, gstin FROM customers WHERE id = ?', [req.customer.id]));
+  if (email && (await db.one('SELECT id FROM customers WHERE email = ? AND id <> ?', [email.toLowerCase(), req.customer.id]))) {
+    throw badRequest('This email is already used by another account');
+  }
+  await db.query('UPDATE customers SET name = ?, email = ?, gstin = ? WHERE id = ?', [name, email ? email.toLowerCase() : null, gstin || null, req.customer.id]);
+  res.json(await db.one(`SELECT ${PROFILE_COLS} FROM customers WHERE id = ?`, [req.customer.id]));
+}));
+
+/** Profile photo (Edit Profile avatar). */
+router.post('/avatar', imageUpload.single('file'), ah(async (req, res) => {
+  if (!req.file) throw badRequest('Choose a photo');
+  const [url] = await storeImages('avatars', [req.file]);
+  await db.query('UPDATE customers SET avatar_url = ? WHERE id = ?', [url, req.customer.id]);
+  res.json({ avatar_url: url });
+}));
+
+/** Change Password. Accounts created with OTP have no password yet, so "current" is only required when one exists. */
+router.put('/password', validate(z.object({ current: z.string().optional(), password: z.string().min(8, 'Password must be at least 8 characters').max(100) })), ah(async (req, res) => {
+  const c = await db.one('SELECT password_hash FROM customers WHERE id = ?', [req.customer.id]);
+  if (c.password_hash) {
+    if (!req.body.current || !(await bcrypt.compare(req.body.current, c.password_hash))) throw badRequest('Current password is incorrect');
+  }
+  await db.query('UPDATE customers SET password_hash = ? WHERE id = ?', [await bcrypt.hash(req.body.password, 10), req.customer.id]);
+  res.json({ ok: true });
+}));
+
+/** Notifications settings toggles: Payment / Tracking / Complete Order / Notification. */
+router.put('/notification-settings', validate(z.object({
+  payment: z.boolean(), tracking: z.boolean(), complete_order: z.boolean(), general: z.boolean(),
+})), ah(async (req, res) => {
+  const b = req.body;
+  await db.query('UPDATE customers SET notif_payment=?, notif_tracking=?, notif_complete=?, notif_general=? WHERE id=?',
+    [b.payment ? 1 : 0, b.tracking ? 1 : 0, b.complete_order ? 1 : 0, b.general ? 1 : 0, req.customer.id]);
+  res.json({ ok: true });
 }));
 
 router.put('/fcm-token', validate(z.object({ token: z.string().min(10) })), ah(async (req, res) => {

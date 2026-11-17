@@ -52,11 +52,13 @@ app.use('/api/v1/profile', require('./routes/app/profile'));
 app.use('/api/v1', require('./routes/app/catalog'));
 app.use('/api/v1', require('./routes/app/cart'));
 app.use('/api/v1/orders', require('./routes/app/orders'));
+app.use('/api/v1/inbox', require('./routes/app/inbox'));
 
 // Admin panel API
 app.use('/api/v1/admin/auth', require('./routes/admin/auth'));
 app.use('/api/v1/admin', require('./routes/admin/catalog'));
 app.use('/api/v1/admin', require('./routes/admin/operations'));
+app.use('/api/v1/admin', require('./routes/admin/content'));
 
 // Serve the built admin panel (optional): copy admin/dist to backend/public
 app.use(express.static(path.join(__dirname, '..', 'public')));

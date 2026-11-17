@@ -12,7 +12,11 @@ router.use(customerAuth);
 const parseAddr = (o) => ({ ...o, shipping_address: typeof o.shipping_address === 'string' ? JSON.parse(o.shipping_address) : o.shipping_address });
 
 /** Step 1: create order from cart → returns Razorpay order details for the Checkout SDK. */
-router.post('/', validate(z.object({ address_id: z.number().int().positive(), coupon_code: z.string().trim().optional().nullable() })), ah(async (req, res) => {
+router.post('/', validate(z.object({
+  address_id: z.number().int().positive(),
+  coupon_code: z.string().trim().optional().nullable(),
+  preferred_method: z.enum(['upi', 'card', 'netbanking', 'wallet']).optional().nullable(),
+})), ah(async (req, res) => {
   const r = await orders.placeOrder(req.customer.id, req.body);
   const c = await db.one('SELECT mobile, name, email FROM customers WHERE id = ?', [req.customer.id]);
   res.status(201).json({ ...r, prefill: { contact: c.mobile, name: c.name || '', email: c.email || '' } });
@@ -55,7 +59,10 @@ router.get('/', ah(async (req, res) => {
     `SELECT id, order_number, status, payment_status, total, created_at,
        (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
        (SELECT image_url FROM order_items oi WHERE oi.order_id = o.id ORDER BY id LIMIT 1) AS image,
-       (SELECT product_name FROM order_items oi WHERE oi.order_id = o.id ORDER BY id LIMIT 1) AS first_item
+       (SELECT product_name FROM order_items oi WHERE oi.order_id = o.id ORDER BY id LIMIT 1) AS first_item,
+       (SELECT variant_label FROM order_items oi WHERE oi.order_id = o.id ORDER BY id LIMIT 1) AS first_variant,
+       (SELECT quantity FROM order_items oi WHERE oi.order_id = o.id ORDER BY id LIMIT 1) AS first_quantity,
+       (SELECT variant_color FROM order_items oi WHERE oi.order_id = o.id ORDER BY id LIMIT 1) AS first_color
      FROM orders o WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
     [req.customer.id, limit, offset]
   );
@@ -78,6 +85,18 @@ router.post('/:id/cancel', validate(z.object({ reason: z.string().trim().max(255
 }));
 
 /** Add all still-available items from a past order back into the cart. */
+/** "Received Order" / "Mark as Done": the customer confirms a shipped order has arrived. */
+router.post('/:id/received', ah(async (req, res) => {
+  const o = await db.one('SELECT * FROM orders WHERE id = ? AND customer_id = ?', [req.params.id, req.customer.id]);
+  if (!o) throw notFound('Order not found');
+  if (o.status === 'delivered') return res.json({ ok: true });
+  if (!['shipped', 'out_for_delivery'].includes(o.status)) throw badRequest('You can confirm delivery once the order has been shipped');
+  await db.query("UPDATE orders SET status = 'delivered' WHERE id = ?", [o.id]);
+  await db.query("INSERT INTO order_status_history (order_id, status, note) VALUES (?, 'delivered', 'Confirmed by customer')", [o.id]);
+  require('../../utils/notify').notifyOrderStatus(o, 'delivered');
+  res.json({ ok: true });
+}));
+
 router.post('/:id/reorder', ah(async (req, res) => {
   const o = await db.one('SELECT id FROM orders WHERE id = ? AND customer_id = ?', [req.params.id, req.customer.id]);
   if (!o) throw notFound('Order not found');

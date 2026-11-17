@@ -3,6 +3,25 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { Badge, ErrorBox, Field, Loading, Modal, PageHead, fmtDate, inr, label, useLoad, useToast } from '../components/ui';
 
+function CourierCard({ o, onSaved }) {
+  const toast = useToast();
+  const [f, setF] = useState({ courier_name: o.courier_name || '', courier_phone: o.courier_phone || '', tracking_url: o.tracking_url || '' });
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try { await api.patch(`/orders/${o.id}/courier`, f); toast('Courier details saved — shown on the app\'s Order Tracking screen'); onSaved(); } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); }
+  };
+  return (
+    <div className="card stack">
+      <h2 style={{ margin: 0 }}>Courier</h2>
+      <Field label="Delivery partner / courier name"><input value={f.courier_name} onChange={(e) => setF({ ...f, courier_name: e.target.value })} placeholder="e.g. Delhivery – Alexander Jr" /></Field>
+      <Field label="Courier phone"><input value={f.courier_phone} onChange={(e) => setF({ ...f, courier_phone: e.target.value })} /></Field>
+      <Field label="Tracking link"><input value={f.tracking_url} onChange={(e) => setF({ ...f, tracking_url: e.target.value })} placeholder="https://" /></Field>
+      <div><button className="btn sm primary" disabled={busy} onClick={save}>Save courier</button></div>
+    </div>
+  );
+}
+
 export default function OrderDetail() {
   const { id } = useParams();
   const toast = useToast();
@@ -108,6 +127,7 @@ export default function OrderDetail() {
             <p style={{ margin: 0 }}><Link to={`/customers/${o.customer_id}`}>{o.customer_name || 'Customer'}</Link></p>
             <p className="muted" style={{ margin: '4px 0 0' }}>{o.mobile}{o.email && ` · ${o.email}`}</p>
           </div>
+          <CourierCard o={o} onSaved={reload} />
           <div className="card">
             <h2>Delivery address</h2>
             <p style={{ margin: 0, lineHeight: 1.6 }}>

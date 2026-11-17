@@ -22,7 +22,7 @@ const uniqueSlug = async (table, base, exceptId = 0, q = db) => {
 const bool = z.union([z.boolean(), z.number(), z.string()]).transform((v) => v === true || v === 1 || v === '1' || v === 'true');
 
 // ================= Image upload (generic) =================
-router.post('/uploads/:folder(products|categories|banners)', imageUpload.array('files', 10), ah(async (req, res) => {
+router.post('/uploads/:folder(products|categories|banners|stores|onboarding)', imageUpload.array('files', 10), ah(async (req, res) => {
   if (!req.files || !req.files.length) throw badRequest('Choose at least one image');
   res.json({ urls: await storeImages(req.params.folder, req.files) });
 }));
@@ -76,6 +76,8 @@ const variantSchema = z.object({
   id: z.number().int().positive().optional(),
   sku: z.string().trim().min(1).max(80),
   label: z.string().trim().min(1).max(80),
+  color: z.string().trim().max(40).optional().nullable(),
+  color_hex: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, 'Use a colour like #8B5A3C').optional().nullable().or(z.literal('')),
   mrp: z.coerce.number().nonnegative(),
   price: z.coerce.number().nonnegative(),
   stock: z.coerce.number().int().min(0),
@@ -86,6 +88,7 @@ const variantSchema = z.object({
 const productSchema = z.object({
   name: z.string().trim().min(2).max(255),
   category_id: z.number().int().positive().nullable().optional(),
+  store_id: z.number().int().positive().nullable().optional(),
   description: z.string().max(20000).optional().nullable(),
   specifications: z.array(z.object({ key: z.string(), value: z.string() })).optional().nullable(),
   hsn_code: z.string().max(20).optional().nullable(),
@@ -105,6 +108,7 @@ router.get('/products', ah(async (req, res) => {
     params.push(`%${req.query.q}%`, `%${req.query.q}%`);
   }
   if (req.query.category_id) { where.push('(p.category_id = ? OR p.category_id IN (SELECT id FROM categories WHERE parent_id = ?))'); params.push(req.query.category_id, req.query.category_id); }
+  if (req.query.store_id) { where.push('p.store_id = ?'); params.push(req.query.store_id); }
   if (req.query.status === 'active') where.push('p.is_active = 1');
   if (req.query.status === 'inactive') where.push('p.is_active = 0');
   if (req.query.stock === 'low') where.push('EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = p.id AND v.stock <= v.low_stock_threshold)');
@@ -112,8 +116,9 @@ router.get('/products', ah(async (req, res) => {
   const w = where.join(' AND ');
   const [{ total }] = await db.query(`SELECT COUNT(*) AS total FROM products p WHERE ${w}`, params);
   const rows = await db.query(
-    `SELECT p.id, p.name, p.slug, p.category_id, p.is_active, p.is_featured, p.gst_rate, p.sold_count, p.created_at, c.name AS category_name
-     FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE ${w} ORDER BY p.id DESC LIMIT ? OFFSET ?`,
+    `SELECT p.id, p.name, p.slug, p.category_id, p.store_id, p.is_active, p.is_featured, p.gst_rate, p.sold_count, p.rating_avg, p.rating_count, p.created_at,
+       c.name AS category_name, s.name AS store_name
+     FROM products p LEFT JOIN categories c ON c.id = p.category_id LEFT JOIN stores s ON s.id = p.store_id WHERE ${w} ORDER BY p.id DESC LIMIT ? OFFSET ?`,
     [...params, limit, offset]
   );
   const data = (await hydrate(rows, { activeVariantsOnly: false })).map((p) => ({ ...p, total_stock: p.variants.reduce((a, v) => a + v.stock, 0) }));
@@ -132,13 +137,13 @@ async function saveProduct(q, id, b) {
   if (new Set(skus).size !== skus.length) throw badRequest('Each variant needs a unique SKU');
   const clash = await q.one('SELECT sku FROM product_variants WHERE sku IN (?) AND product_id <> ? LIMIT 1', [skus, id || 0]);
   if (clash) throw badRequest(`SKU ${clash.sku} is already used by another product`);
-  const vals = [b.name, b.category_id || null, b.description || null, b.specifications ? JSON.stringify(b.specifications) : null,
+  const vals = [b.name, b.category_id || null, b.store_id || null, b.description || null, b.specifications ? JSON.stringify(b.specifications) : null,
     b.hsn_code || null, b.gst_rate, b.is_featured ? 1 : 0, b.is_active ? 1 : 0];
   if (id) {
-    await q.query('UPDATE products SET name=?, category_id=?, description=?, specifications=?, hsn_code=?, gst_rate=?, is_featured=?, is_active=?, slug=? WHERE id=?',
+    await q.query('UPDATE products SET name=?, category_id=?, store_id=?, description=?, specifications=?, hsn_code=?, gst_rate=?, is_featured=?, is_active=?, slug=? WHERE id=?',
       [...vals, await uniqueSlug('products', b.name, id, q), id]);
   } else {
-    const r = await q.query('INSERT INTO products (name, category_id, description, specifications, hsn_code, gst_rate, is_featured, is_active, slug) VALUES (?,?,?,?,?,?,?,?,?)',
+    const r = await q.query('INSERT INTO products (name, category_id, store_id, description, specifications, hsn_code, gst_rate, is_featured, is_active, slug) VALUES (?,?,?,?,?,?,?,?,?,?)',
       [...vals, await uniqueSlug('products', b.name, 0, q)]);
     id = r.insertId;
   }
@@ -148,12 +153,12 @@ async function saveProduct(q, id, b) {
   const keepIds = [];
   for (const v of b.variants) {
     const existing = await q.one('SELECT id FROM product_variants WHERE product_id = ? AND (id = ? OR sku = ?)', [id, v.id || 0, v.sku.toUpperCase()]);
-    const vv = [v.sku.toUpperCase(), v.label, v.mrp, v.price, v.stock, v.low_stock_threshold, v.is_active ? 1 : 0];
+    const vv = [v.sku.toUpperCase(), v.label, v.color || null, v.color_hex || null, v.mrp, v.price, v.stock, v.low_stock_threshold, v.is_active ? 1 : 0];
     if (existing) {
-      await q.query('UPDATE product_variants SET sku=?, label=?, mrp=?, price=?, stock=?, low_stock_threshold=?, is_active=? WHERE id=?', [...vv, existing.id]);
+      await q.query('UPDATE product_variants SET sku=?, label=?, color=?, color_hex=?, mrp=?, price=?, stock=?, low_stock_threshold=?, is_active=? WHERE id=?', [...vv, existing.id]);
       keepIds.push(existing.id);
     } else {
-      const r = await q.query('INSERT INTO product_variants (sku, label, mrp, price, stock, low_stock_threshold, is_active, product_id) VALUES (?,?,?,?,?,?,?,?)', [...vv, id]);
+      const r = await q.query('INSERT INTO product_variants (sku, label, color, color_hex, mrp, price, stock, low_stock_threshold, is_active, product_id) VALUES (?,?,?,?,?,?,?,?,?,?)', [...vv, id]);
       keepIds.push(r.insertId);
     }
   }
@@ -204,14 +209,14 @@ router.patch('/variants/:id/stock', validate(z.object({ stock: z.coerce.number()
 }));
 
 // ================= Bulk import / export =================
-const TEMPLATE_HEADERS = ['product_name', 'category', 'subcategory', 'description', 'hsn_code', 'gst_rate', 'is_featured', 'is_active',
-  'image_urls', 'sku', 'variant_label', 'mrp', 'price', 'stock', 'low_stock_threshold'];
+const TEMPLATE_HEADERS = ['product_name', 'store', 'category', 'subcategory', 'description', 'hsn_code', 'gst_rate', 'is_featured', 'is_active',
+  'image_urls', 'sku', 'variant_label', 'color', 'color_hex', 'mrp', 'price', 'stock', 'low_stock_threshold'];
 
 router.get('/products-import/template', (_req, res) => {
   const ws = XLSX.utils.aoa_to_sheet([
     TEMPLATE_HEADERS,
-    ['Basmati Rice Premium', 'Groceries', 'Rice & Grains', 'Aged long-grain basmati rice', '1006', 5, 1, 1, 'https://example.com/rice1.jpg|https://example.com/rice2.jpg', 'RICE-BAS-1KG', '1 kg', 180, 159, 120, 10],
-    ['Basmati Rice Premium', 'Groceries', 'Rice & Grains', '', '1006', 5, 1, 1, '', 'RICE-BAS-5KG', '5 kg', 850, 749, 40, 5],
+    ['Leather Backpack', 'Upbox Bag', 'Bags', 'Backpacks', 'Genuine leather backpack', '4202', 18, 1, 1, 'https://example.com/bag1.jpg|https://example.com/bag2.jpg', 'BAG-LTH-BRN', 'Standard', 'Brown', '#8B5A3C', 2999, 2499, 20, 5],
+    ['Leather Backpack', 'Upbox Bag', 'Bags', 'Backpacks', '', '4202', 18, 1, 1, '', 'BAG-LTH-BLK', 'Standard', 'Black', '#111111', 2999, 2499, 12, 5],
   ]);
   ws['!cols'] = TEMPLATE_HEADERS.map((h) => ({ wch: Math.max(12, h.length + 2) }));
   const notes = XLSX.utils.aoa_to_sheet([
@@ -219,7 +224,8 @@ router.get('/products-import/template', (_req, res) => {
     ['• One row per variant. Rows with the same product_name are grouped into one product.'],
     ['• sku must be unique. If the SKU already exists, that variant (and its product) is UPDATED; otherwise it is CREATED.'],
     ['• For a price/stock-only update, fill just sku, mrp, price and stock — other columns can be left blank.'],
-    ['• category/subcategory are created automatically if they do not exist.'],
+    ['• category/subcategory and store are created automatically if they do not exist.'],
+    ['• color / color_hex: optional colour name and swatch for the variant, e.g. Brown / #8B5A3C'],
     ['• image_urls: separate multiple URLs with |'],
     ['• is_featured / is_active: 1 = yes, 0 = no'],
   ]);
@@ -291,6 +297,19 @@ router.post('/products-import', sheetUpload.single('file'), ah(async (req, res) 
       catCache[key] = c.id;
       return c.id;
     };
+    const storeCache = {};
+    const getStore = async (name) => {
+      if (blank(name)) return null;
+      const key = String(name).toLowerCase();
+      if (storeCache[key]) return storeCache[key];
+      let s = await q.one('SELECT id FROM stores WHERE name = ?', [name]);
+      if (!s) {
+        const r = await q.query('INSERT INTO stores (name, slug) VALUES (?, ?)', [name, `${slugify(name)}-${Date.now().toString(36)}`]);
+        s = { id: r.insertId };
+      }
+      storeCache[key] = s.id;
+      return s.id;
+    };
     const productIdByName = {};
     let created = 0; let updated = 0;
     for (const v of okRows) {
@@ -302,6 +321,8 @@ router.post('/products-import', sheetUpload.single('file'), ah(async (req, res) 
         if (v.price !== null) { sets.push('price = ?'); params.push(v.price); }
         if (v.stock !== null) { sets.push('stock = ?'); params.push(v.stock); }
         if (!blank(r.variant_label)) { sets.push('label = ?'); params.push(r.variant_label); }
+        if (!blank(r.color)) { sets.push('color = ?'); params.push(String(r.color)); }
+        if (!blank(r.color_hex)) { sets.push('color_hex = ?'); params.push(String(r.color_hex)); }
         if (!blank(r.low_stock_threshold)) { sets.push('low_stock_threshold = ?'); params.push(toNum(r.low_stock_threshold)); }
         if (sets.length) await q.query(`UPDATE product_variants SET ${sets.join(', ')} WHERE id = ?`, [...params, ex.id]);
         const psets = []; const pparams = [];
@@ -322,9 +343,10 @@ router.post('/products-import', sheetUpload.single('file'), ah(async (req, res) 
         else {
           const parent = await getCategory(r.category, null);
           const catId = await getCategory(r.subcategory, parent);
+          const storeId = await getStore(r.store);
           const ins = await q.query(
-            'INSERT INTO products (name, slug, category_id, description, hsn_code, gst_rate, is_featured, is_active) VALUES (?,?,?,?,?,?,?,?)',
-            [pname, await uniqueSlug('products', pname, 0, q), catId || null, r.description || null, blank(r.hsn_code) ? null : String(r.hsn_code), v.gst || 0,
+            'INSERT INTO products (name, slug, category_id, store_id, description, hsn_code, gst_rate, is_featured, is_active) VALUES (?,?,?,?,?,?,?,?,?)',
+            [pname, await uniqueSlug('products', pname, 0, q), catId || null, storeId || null, r.description || null, blank(r.hsn_code) ? null : String(r.hsn_code), v.gst || 0,
               Number(r.is_featured) ? 1 : 0, blank(r.is_active) ? 1 : (Number(r.is_active) ? 1 : 0)]
           );
           pid = ins.insertId;
@@ -333,8 +355,8 @@ router.post('/products-import', sheetUpload.single('file'), ah(async (req, res) 
         }
         productIdByName[pname.toLowerCase()] = pid;
       }
-      await q.query('INSERT INTO product_variants (product_id, sku, label, mrp, price, stock, low_stock_threshold) VALUES (?,?,?,?,?,?,?)',
-        [pid, v.sku, r.variant_label, v.mrp, v.price, v.stock, toNum(r.low_stock_threshold) ?? 5]);
+      await q.query('INSERT INTO product_variants (product_id, sku, label, color, color_hex, mrp, price, stock, low_stock_threshold) VALUES (?,?,?,?,?,?,?,?,?)',
+        [pid, v.sku, r.variant_label, blank(r.color) ? null : String(r.color), blank(r.color_hex) ? null : String(r.color_hex), v.mrp, v.price, v.stock, toNum(r.low_stock_threshold) ?? 5]);
       created++;
     }
     return { created, updated };
@@ -345,10 +367,10 @@ router.post('/products-import', sheetUpload.single('file'), ah(async (req, res) 
 
 router.get('/products-export', ah(async (_req, res) => {
   const rows = await db.query(
-    `SELECT p.name AS product_name, pc.name AS category, c.name AS subcategory, p.description, p.hsn_code, p.gst_rate, p.is_featured, p.is_active,
+    `SELECT p.name AS product_name, st.name AS store, pc.name AS category, c.name AS subcategory, p.description, p.hsn_code, p.gst_rate, p.is_featured, p.is_active,
        (SELECT GROUP_CONCAT(url ORDER BY sort_order SEPARATOR '|') FROM product_images i WHERE i.product_id = p.id) AS image_urls,
-       v.sku, v.label AS variant_label, v.mrp, v.price, v.stock, v.low_stock_threshold
-     FROM product_variants v JOIN products p ON p.id = v.product_id
+       v.sku, v.label AS variant_label, v.color, v.color_hex, v.mrp, v.price, v.stock, v.low_stock_threshold
+     FROM product_variants v JOIN products p ON p.id = v.product_id LEFT JOIN stores st ON st.id = p.store_id
      LEFT JOIN categories c ON c.id = p.category_id LEFT JOIN categories pc ON pc.id = c.parent_id
      ORDER BY p.id, v.id`
   );

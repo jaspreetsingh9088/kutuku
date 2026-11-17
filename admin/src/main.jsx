@@ -20,13 +20,17 @@ import Customers from './pages/Customers';
 import CustomerDetail from './pages/CustomerDetail';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import Stores from './pages/Stores';
+import Reviews from './pages/Reviews';
+import Messages from './pages/Messages';
+import Content from './pages/Content';
 
 
 const NAV = [
   { group: 'Overview', items: [['/', 'Dashboard', '▦']] },
-  { group: 'Catalog', items: [['/products', 'Products', '▤'], ['/products/import', 'Bulk upload', '⇪'], ['/categories', 'Categories', '◫']] },
-  { group: 'Sales', items: [['/orders', 'Orders', '▣'], ['/customers', 'Customers', '◉'], ['/reports', 'Reports', '◔']] },
-  { group: 'Marketing', items: [['/coupons', 'Coupons', '%'], ['/banners', 'Banners', '▭']] },
+  { group: 'Catalog', items: [['/products', 'Products', '▤'], ['/products/import', 'Bulk upload', '⇪'], ['/categories', 'Categories', '◫'], ['/stores', 'Stores', '⌂']] },
+  { group: 'Sales', items: [['/orders', 'Orders', '▣'], ['/customers', 'Customers', '◉'], ['/reviews', 'Reviews', '★'], ['/messages', 'Messages', '✉'], ['/reports', 'Reports', '◔']] },
+  { group: 'Marketing', items: [['/coupons', 'Coupons', '%'], ['/banners', 'Banners', '▭'], ['/content', 'App content', '❏']] },
   { group: 'System', items: [['/settings', 'Settings', '⚙']] },
 ];
 
@@ -91,6 +95,10 @@ function App() {
             <Route path="/banners" element={<Banners />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/stores" element={<Stores />} />
+            <Route path="/reviews" element={<Reviews />} />
+            <Route path="/messages" element={<Messages />} />
+            <Route path="/content" element={<Content />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

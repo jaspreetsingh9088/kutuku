@@ -6,7 +6,7 @@ const { customerAuth } = require('../../middleware/auth');
 const { quote } = require('../../services/orders');
 const { hydrate } = require('../../services/catalog');
 
-router.use(['/cart', '/wishlist', '/coupons'], customerAuth);
+router.use(['/cart', '/cart-select-all', '/wishlist', '/coupons'], customerAuth);
 
 const q = { query: db.query, one: db.one };
 
@@ -25,7 +25,7 @@ router.post('/cart', validate(z.object({ variant_id: z.number().int().positive()
   const newQty = (existing ? existing.quantity : 0) + quantity;
   if (newQty > v.stock) throw badRequest(v.stock > 0 ? `Only ${v.stock} in stock` : 'Out of stock');
   await db.query(
-    'INSERT INTO cart_items (customer_id, variant_id, quantity) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE quantity = ?',
+    'INSERT INTO cart_items (customer_id, variant_id, quantity, selected) VALUES (?, ?, ?, 1) ON DUPLICATE KEY UPDATE quantity = ?, selected = 1',
     [req.customer.id, variant_id, newQty, newQty]
   );
   const r = await quote(q, req.customer.id);
@@ -51,6 +51,21 @@ router.put('/cart/:variantId', validate(z.object({ quantity: z.number().int().mi
 router.delete('/cart/:variantId', ah(async (req, res) => {
   await db.query('DELETE FROM cart_items WHERE customer_id = ? AND variant_id = ?', [req.customer.id, Number(req.params.variantId)]);
   const r = await quote(q, req.customer.id);
+  delete r.coupon;
+  res.json(r);
+}));
+
+/** Tick / untick an item in My Cart (only ticked items are checked out). */
+router.put('/cart/:variantId/select', validate(z.object({ selected: z.boolean() })), ah(async (req, res) => {
+  await db.query('UPDATE cart_items SET selected = ? WHERE customer_id = ? AND variant_id = ?', [req.body.selected ? 1 : 0, req.customer.id, Number(req.params.variantId)]);
+  const r = await quote(q, req.customer.id, req.query.coupon);
+  delete r.coupon;
+  res.json(r);
+}));
+
+router.put('/cart-select-all', validate(z.object({ selected: z.boolean() })), ah(async (req, res) => {
+  await db.query('UPDATE cart_items SET selected = ? WHERE customer_id = ?', [req.body.selected ? 1 : 0, req.customer.id]);
+  const r = await quote(q, req.customer.id, req.query.coupon);
   delete r.coupon;
   res.json(r);
 }));

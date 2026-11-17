@@ -146,6 +146,16 @@ router.post('/orders/:id/cancel', validate(z.object({ reason: z.string().trim().
   res.json({ ok: true });
 }));
 
+router.patch('/orders/:id/courier', validate(z.object({
+  courier_name: z.string().trim().max(120).optional().nullable(),
+  courier_phone: z.string().trim().max(20).optional().nullable(),
+  tracking_url: z.string().trim().url().max(512).optional().nullable().or(z.literal('')),
+})), ah(async (req, res) => {
+  const b = req.body;
+  await db.query('UPDATE orders SET courier_name = ?, courier_phone = ?, tracking_url = ? WHERE id = ?', [b.courier_name || null, b.courier_phone || null, b.tracking_url || null, req.params.id]);
+  res.json({ ok: true });
+}));
+
 router.post('/orders/:id/refund', validate(z.object({ amount: z.coerce.number().positive() })), ah(async (req, res) => {
   res.json(await orders.refundOrder(Number(req.params.id), req.body.amount));
 }));
@@ -339,8 +349,7 @@ router.get('/reports/:type(sales|products|orders|stock)', ah(async (req, res) =>
 
 // ================= Push notifications =================
 router.post('/notifications/broadcast', validate(z.object({ title: z.string().min(2).max(100), body: z.string().min(2).max(300), product_id: z.number().int().optional() })), ah(async (req, res) => {
-  if (!isEnabled()) throw badRequest('Push notifications are not configured. Set FIREBASE_SERVICE_ACCOUNT on the server.');
-  const data = { type: 'promo' };
+  const data = {};
   if (req.body.product_id) data.product_id = req.body.product_id;
   res.json(await broadcast(req.body.title, req.body.body, data));
 }));

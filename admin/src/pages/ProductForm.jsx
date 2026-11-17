@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { ErrorBox, Field, ImageUpload, Loading, PageHead, Toggle, useToast } from '../components/ui';
 
-const blankVariant = () => ({ sku: '', label: '', mrp: '', price: '', stock: '', low_stock_threshold: 5, is_active: true });
+const blankVariant = () => ({ sku: '', label: '', color: '', color_hex: '#000000', mrp: '', price: '', stock: '', low_stock_threshold: 5, is_active: true });
 const GST_RATES = [0, 5, 12, 18, 28];
 
 export default function ProductForm() {
@@ -12,24 +12,26 @@ export default function ProductForm() {
   const nav = useNavigate();
   const toast = useToast();
   const [cats, setCats] = useState([]);
+  const [stores, setStores] = useState([]);
   const [p, setP] = useState(isNew ? {
-    name: '', category_id: '', description: '', hsn_code: '', gst_rate: 5, is_featured: false, is_active: true,
+    name: '', category_id: '', store_id: '', description: '', hsn_code: '', gst_rate: 5, is_featured: false, is_active: true,
     images: [], specifications: [], variants: [blankVariant()],
   } : null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [urlInput, setUrlInput] = useState('');
 
-  useEffect(() => { api.get('/categories').then(setCats).catch(() => {}); }, []);
+  useEffect(() => { api.get('/categories').then(setCats).catch(() => {}); api.get('/stores').then(setStores).catch(() => {}); }, []);
   useEffect(() => {
     if (isNew) return;
     api.get(`/products/${id}`).then((r) => setP({
       ...r,
       category_id: r.category_id || '',
+      store_id: r.store_id || '',
       is_featured: !!r.is_featured, is_active: !!r.is_active,
       images: r.images.map((i) => i.url),
       specifications: Array.isArray(r.specifications) ? r.specifications : [],
-      variants: r.variants.map((v) => ({ ...v, is_active: !!v.is_active })),
+      variants: r.variants.map((v) => ({ ...v, color: v.color || '', color_hex: v.color_hex || '#000000', is_active: !!v.is_active })),
     })).catch((e) => setError(e.message));
   }, [id, isNew]);
 
@@ -49,11 +51,11 @@ export default function ProductForm() {
     e.preventDefault();
     setError(''); setSaving(true);
     const body = {
-      name: p.name, category_id: p.category_id ? Number(p.category_id) : null, description: p.description || null,
+      name: p.name, category_id: p.category_id ? Number(p.category_id) : null, store_id: p.store_id ? Number(p.store_id) : null, description: p.description || null,
       hsn_code: p.hsn_code || null, gst_rate: Number(p.gst_rate), is_featured: p.is_featured, is_active: p.is_active,
       images: p.images, specifications: p.specifications.filter((s) => s.key.trim() && s.value.trim()),
       variants: p.variants.map((v) => ({
-        ...(v.id ? { id: v.id } : {}), sku: v.sku, label: v.label, mrp: Number(v.mrp), price: Number(v.price),
+        ...(v.id ? { id: v.id } : {}), sku: v.sku, label: v.label, color: v.color || null, color_hex: v.color ? v.color_hex : null, mrp: Number(v.mrp), price: Number(v.price),
         stock: Number(v.stock), low_stock_threshold: Number(v.low_stock_threshold || 0), is_active: v.is_active,
       })),
     };
@@ -83,6 +85,12 @@ export default function ProductForm() {
                   {cats.map((c) => <option key={c.id} value={c.id}>{c.parent_name ? `${c.parent_name} › ` : ''}{c.name}</option>)}
                 </select>
               </Field>
+              <Field label="Store / brand" hint="Shown under the product name and on the store page">
+                <select value={p.store_id} onChange={(e) => set('store_id', e.target.value)}>
+                  <option value="">— None —</option>
+                  {stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </Field>
               <Field label="HSN code"><input value={p.hsn_code || ''} onChange={(e) => set('hsn_code', e.target.value)} /></Field>
               <Field label="GST rate" hint="Prices entered below are treated as GST-inclusive">
                 <select value={p.gst_rate} onChange={(e) => set('gst_rate', e.target.value)}>{GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}</select>
@@ -102,11 +110,15 @@ export default function ProductForm() {
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table className="variant-table">
-                <thead><tr><th>Weight / qty *</th><th>SKU *</th><th>MRP *</th><th>Sale price *</th><th>Stock *</th><th>Low alert</th><th>Active</th><th /></tr></thead>
+                <thead><tr><th>Size / qty *</th><th>Colour</th><th>SKU *</th><th>MRP *</th><th>Sale price *</th><th>Stock *</th><th>Low alert</th><th>Active</th><th /></tr></thead>
                 <tbody>
                   {p.variants.map((v, i) => (
                     <tr key={v.id || `n${i}`}>
                       <td><input required placeholder="e.g. 500 g" value={v.label} onChange={(e) => setVariant(i, 'label', e.target.value)} style={{ minWidth: 100 }} /></td>
+                      <td><div className="inline" style={{ gap: 6 }}>
+                        <input type="color" value={v.color_hex || '#000000'} onChange={(e) => setVariant(i, 'color_hex', e.target.value)} style={{ width: 34, height: 32, padding: 2 }} title="Swatch colour" />
+                        <input placeholder="e.g. Brown" value={v.color} onChange={(e) => setVariant(i, 'color', e.target.value)} style={{ width: 90 }} />
+                      </div></td>
                       <td><input required value={v.sku} onChange={(e) => setVariant(i, 'sku', e.target.value.toUpperCase())} style={{ minWidth: 110 }} /></td>
                       <td><input required type="number" step="0.01" min="0" value={v.mrp} onChange={(e) => setVariant(i, 'mrp', e.target.value)} style={{ width: 90 }} /></td>
                       <td><input required type="number" step="0.01" min="0" value={v.price} onChange={(e) => setVariant(i, 'price', e.target.value)} style={{ width: 90 }} /></td>
@@ -119,7 +131,7 @@ export default function ProductForm() {
                 </tbody>
               </table>
             </div>
-            <p className="hint" style={{ marginTop: 8 }}>The app shows the lowest-priced active variant on product cards. Discount % is calculated from MRP and sale price.</p>
+            <p className="hint" style={{ marginTop: 8 }}>Add one row per size/colour combination. Colours appear as swatches on the product page; leave colour empty if not applicable. The app shows the lowest-priced active variant on product cards. Discount % is calculated from MRP and sale price.</p>
           </div>
 
           <div className="card">

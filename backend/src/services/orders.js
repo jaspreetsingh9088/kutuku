@@ -11,7 +11,7 @@ const RESERVATION_MINUTES = 30;
 /** Load the customer's cart with live product data. */
 async function loadCart(q, customerId) {
   return q.query(
-    `SELECT ci.id, ci.quantity, v.id AS variant_id, v.sku, v.label, v.mrp, v.price, v.stock, v.is_active AS variant_active,
+    `SELECT ci.id, ci.quantity, ci.selected, v.id AS variant_id, v.sku, v.label, v.color, v.color_hex, v.mrp, v.price, v.stock, v.is_active AS variant_active,
             p.id AS product_id, p.name, p.hsn_code, p.gst_rate, p.is_active AS product_active,
             (SELECT url FROM product_images pi WHERE pi.product_id = p.id ORDER BY sort_order, id LIMIT 1) AS image
      FROM cart_items ci
@@ -45,7 +45,8 @@ async function quote(q, customerId, couponCode) {
   const problems = [];
   let subtotal = 0;
   let mrpTotal = 0;
-  for (const it of items) {
+  // Only items ticked in My Cart count towards the bill and the order
+  for (const it of items.filter((x) => x.selected)) {
     if (!it.product_active || !it.variant_active) problems.push({ variant_id: it.variant_id, message: `${it.name} is no longer available` });
     else if (it.stock < it.quantity) problems.push({ variant_id: it.variant_id, message: it.stock > 0 ? `Only ${it.stock} left for ${it.name} (${it.label})` : `${it.name} (${it.label}) is out of stock` });
     subtotal += Number(it.price) * it.quantity;
@@ -64,10 +65,11 @@ async function quote(q, customerId, couponCode) {
   }
   const delivery = subtotal === 0 || subtotal - discount >= config.delivery.freeAbove ? 0 : config.delivery.charge;
   return {
-    items: items.map((it) => ({ ...it, line_total: round2(it.price * it.quantity) })),
+    items: items.map((it) => ({ ...it, selected: !!it.selected, line_total: round2(it.price * it.quantity) })),
     problems,
     summary: {
-      item_count: items.reduce((a, b) => a + b.quantity, 0),
+      item_count: items.filter((x) => x.selected).reduce((a, b) => a + b.quantity, 0),
+      cart_count: items.reduce((a, b) => a + b.quantity, 0),
       mrp_total: round2(mrpTotal),
       subtotal,
       savings: round2(mrpTotal - subtotal + discount),
@@ -92,15 +94,15 @@ const orderNumber = () => {
  * Create an order from the cart, reserve stock and create a Razorpay order.
  * Stock is released automatically if payment is not completed within RESERVATION_MINUTES.
  */
-async function placeOrder(customerId, { address_id, coupon_code }) {
+async function placeOrder(customerId, { address_id, coupon_code, preferred_method }) {
   // Free up stock from abandoned checkouts before reserving more (needed where no background job runs)
   await sweepStaleReservations().catch(() => {});
   const order = await db.tx(async (q) => {
     const addr = await q.one('SELECT * FROM addresses WHERE id = ? AND customer_id = ?', [address_id, customerId]);
     if (!addr) throw badRequest('Please select a valid delivery address');
     // Lock the variant rows to prevent overselling
-    const cartRows = await q.query('SELECT variant_id FROM cart_items WHERE customer_id = ?', [customerId]);
-    if (!cartRows.length) throw badRequest('Your cart is empty');
+    const cartRows = await q.query('SELECT variant_id FROM cart_items WHERE customer_id = ? AND selected = 1', [customerId]);
+    if (!cartRows.length) throw badRequest('Select at least one item to check out');
     await q.query('SELECT id FROM product_variants WHERE id IN (?) FOR UPDATE', [cartRows.map((r) => r.variant_id)]);
 
     const qt = await quote(q, customerId, coupon_code);
@@ -112,24 +114,25 @@ async function placeOrder(customerId, { address_id, coupon_code }) {
       name: addr.name, phone: addr.phone, line1: addr.line1, line2: addr.line2, landmark: addr.landmark,
       city: addr.city, state: addr.state, pincode: addr.pincode,
     };
+    const ordered = qt.items.filter((it) => it.selected);
     const number = orderNumber();
     const res = await q.query(
       `INSERT INTO orders (order_number, customer_id, status, payment_status, subtotal, discount, delivery_charge, total,
-                           coupon_id, coupon_code, shipping_address)
-       VALUES (?, ?, 'pending_payment', 'pending', ?, ?, ?, ?, ?, ?, ?)`,
-      [number, customerId, s.subtotal, s.discount, s.delivery_charge, s.total, qt.coupon ? qt.coupon.id : null, s.coupon_code, JSON.stringify(shipping)]
+                           coupon_id, coupon_code, shipping_address, preferred_method)
+       VALUES (?, ?, 'pending_payment', 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [number, customerId, s.subtotal, s.discount, s.delivery_charge, s.total, qt.coupon ? qt.coupon.id : null, s.coupon_code, JSON.stringify(shipping), preferred_method || null]
     );
     const orderId = res.insertId;
-    for (const it of qt.items) {
+    for (const it of ordered) {
       await q.query(
-        `INSERT INTO order_items (order_id, product_id, variant_id, product_name, variant_label, sku, image_url, hsn_code, gst_rate, unit_price, mrp, quantity, line_total)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [orderId, it.product_id, it.variant_id, it.name, it.label, it.sku, it.image, it.hsn_code, it.gst_rate, it.price, it.mrp, it.quantity, it.line_total]
+        `INSERT INTO order_items (order_id, product_id, variant_id, product_name, variant_label, variant_color, sku, image_url, hsn_code, gst_rate, unit_price, mrp, quantity, line_total)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [orderId, it.product_id, it.variant_id, it.name, it.label, it.color || null, it.sku, it.image, it.hsn_code, it.gst_rate, it.price, it.mrp, it.quantity, it.line_total]
       );
       await q.query('UPDATE product_variants SET stock = stock - ? WHERE id = ?', [it.quantity, it.variant_id]);
     }
     await q.query('INSERT INTO order_status_history (order_id, status, note) VALUES (?, ?, ?)', [orderId, 'pending_payment', 'Awaiting payment']);
-    return { id: orderId, order_number: number, total: s.total, customer_id: customerId };
+    return { id: orderId, order_number: number, total: s.total, customer_id: customerId, preferred_method: preferred_method || null };
   });
 
   try {
@@ -170,7 +173,8 @@ async function markPaid(orderId, paymentId, raw) {
       await q.query('UPDATE coupons SET used_count = used_count + 1 WHERE id = ?', [o.coupon_id]);
       await q.query('INSERT INTO coupon_redemptions (coupon_id, customer_id, order_id) VALUES (?, ?, ?)', [o.coupon_id, o.customer_id, orderId]);
     }
-    await q.query('DELETE FROM cart_items WHERE customer_id = ?', [o.customer_id]);
+    const orderedVariants = (await q.query('SELECT variant_id FROM order_items WHERE order_id = ? AND variant_id IS NOT NULL', [orderId])).map((r) => r.variant_id);
+    if (orderedVariants.length) await q.query('DELETE FROM cart_items WHERE customer_id = ? AND variant_id IN (?)', [o.customer_id, orderedVariants]);
     return o;
   });
   if (changed) notifyOrderStatus(changed, 'placed');

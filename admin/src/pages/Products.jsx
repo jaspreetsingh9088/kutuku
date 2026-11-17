@@ -8,10 +8,11 @@ export default function Products() {
   const [sp, setSp] = useSearchParams();
   const [q, setQ] = useState(sp.get('q') || '');
   const dq = useDebounced(q);
-  const f = { q: dq, category_id: sp.get('category_id') || '', status: sp.get('status') || '', stock: sp.get('stock') || '', page: sp.get('page') || 1 };
+  const f = { q: dq, store_id: sp.get('store_id') || '', category_id: sp.get('category_id') || '', status: sp.get('status') || '', stock: sp.get('stock') || '', page: sp.get('page') || 1 };
   const set = (k, v) => { const n = new URLSearchParams(sp); v ? n.set(k, v) : n.delete(k); if (k !== 'page') n.delete('page'); setSp(n); };
 
   const [cats] = useLoad(() => api.get('/categories'));
+  const [stores] = useLoad(() => api.get('/stores'));
   const [data, loading, error, reload, setData] = useLoad(() => api.get(`/products${qs(f)}`), [JSON.stringify(f)]);
 
   const toggle = async (p) => {
@@ -38,6 +39,10 @@ export default function Products() {
           <option value="">All categories</option>
           {(cats || []).map((c) => <option key={c.id} value={c.id}>{c.parent_name ? `${c.parent_name} › ` : ''}{c.name}</option>)}
         </select>
+        <select value={f.store_id} onChange={(e) => set('store_id', e.target.value)}>
+          <option value="">All stores</option>
+          {(stores || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
         <select value={f.status} onChange={(e) => set('status', e.target.value)}>
           <option value="">Any status</option><option value="active">Active</option><option value="inactive">Inactive</option>
         </select>
@@ -50,7 +55,7 @@ export default function Products() {
         <>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Product</th><th>Category</th><th>Variants</th><th className="num">Price</th><th className="num">Stock</th><th className="num">Sold</th><th>Active</th><th /></tr></thead>
+              <thead><tr><th>Product</th><th>Category</th><th>Store</th><th>Variants</th><th className="num">Price</th><th className="num">Stock</th><th className="num">Sold</th><th>Active</th><th /></tr></thead>
               <tbody>
                 {data.data.map((p) => {
                   const low = p.variants.some((v) => v.stock <= v.low_stock_threshold);
@@ -61,7 +66,13 @@ export default function Products() {
                         <div><Link to={`/products/${p.id}`}>{p.name}</Link>{p.is_featured ? <> <Badge value="Featured" tone="violet" /></> : null}
                           <div className="muted" style={{ fontSize: 12 }}>{p.variants.map((v) => v.sku).join(', ')}</div></div></div></td>
                       <td>{p.category_name || <span className="muted">—</span>}</td>
-                      <td>{p.variants.map((v) => v.label).join(', ')}</td>
+                      <td>{p.store_name || <span className="muted">—</span>}{p.rating_count > 0 && <div className="muted" style={{ fontSize: 12 }}>★ {Number(p.rating_avg).toFixed(1)} ({p.rating_count})</div>}</td>
+                      <td>{p.variants.map((v) => (
+                        <span key={v.id} className="inline" style={{ gap: 4, display: 'inline-flex', marginRight: 8 }}>
+                          {v.color_hex && <span title={v.color} style={{ width: 10, height: 10, borderRadius: '50%', background: v.color_hex, border: '1px solid #ddd', display: 'inline-block' }} />}
+                          {v.label}
+                        </span>
+                      ))}</td>
                       <td className="num">{prices.length ? (Math.min(...prices) === Math.max(...prices) ? inr(prices[0]) : `${inr(Math.min(...prices))} – ${inr(Math.max(...prices))}`) : '—'}</td>
                       <td className="num">{p.total_stock} {low && <Badge value={p.total_stock === 0 ? 'Out' : 'Low'} tone={p.total_stock === 0 ? 'red' : 'amber'} />}</td>
                       <td className="num">{p.sold_count}</td>
