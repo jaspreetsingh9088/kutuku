@@ -4,6 +4,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("io.github.takahirom.roborazzi")
 }
 
 // Firebase push notifications: add app/google-services.json from the Firebase console to enable.
@@ -67,6 +68,8 @@ android {
         buildConfig = true
     }
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+    // Screenshot tests (Roborazzi + Robolectric) render every screen on the JVM for design review
+    testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 
 dependencies {
@@ -93,9 +96,19 @@ dependencies {
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
 
+    implementation("androidx.biometric:biometric:1.1.0")
     implementation("com.razorpay:checkout:1.6.40")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-messaging")
+
+    testImplementation(composeBom)
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.32.2")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.32.2")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

@@ -33,6 +33,7 @@ class ShopMessagingService : FirebaseMessagingService() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             msg.data["order_id"]?.let { putExtra("order_id", it.toIntOrNull()) }
             msg.data["product_id"]?.let { putExtra("product_id", it.toIntOrNull()) }
+            msg.data["conversation_id"]?.let { putExtra("conversation_id", it.toIntOrNull()) }
         }
         val pi = PendingIntent.getActivity(this, System.currentTimeMillis().toInt(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)

@@ -56,3 +56,22 @@ jobs:
             --prerelease
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Render every screen (375x812 dp, like the Figma frames) and publish them for design review
+      - name: Render screen screenshots
+        id: screens
+        if: success()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest --tests "*ScreenshotTest*" -Proborazzi.test.record=true --no-daemon 2>&1 | tee screens.log
+          cd app/build/outputs/roborazzi && zip -q -r "$GITHUB_WORKSPACE/android/screens.zip" .
+          cd "$GITHUB_WORKSPACE/android"
+          gh release delete screens-latest --yes --cleanup-tag || true
+          gh release create screens-latest screens.zip --title "Screen renders (latest)" --notes "Rendered screens for commit ${GITHUB_SHA::7}" --prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Report screenshot errors
+        if: always() && steps.screens.outcome == 'failure'
+        run: grep -E '^e: |FAILED|Exception' -A3 screens.log 2>/dev/null | head -40 | while IFS= read -r line; do echo "::warning::${line//%/%25}"; done || true

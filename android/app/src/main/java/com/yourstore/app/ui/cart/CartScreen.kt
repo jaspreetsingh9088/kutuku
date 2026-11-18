@@ -1,41 +1,48 @@
 package com.yourstore.app.ui.cart
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Discount
 import androidx.compose.material.icons.outlined.ShoppingBag
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.sp
-import com.yourstore.app.ui.theme.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yourstore.app.ShopApp
 import com.yourstore.app.data.apiCall
-import com.yourstore.app.data.model.Cart
-import com.yourstore.app.data.model.CartSummary
-import com.yourstore.app.data.model.Coupon
-import com.yourstore.app.data.model.CouponReq
-import com.yourstore.app.data.model.QtyReq
+import com.yourstore.app.data.model.*
 import com.yourstore.app.ui.components.*
 import com.yourstore.app.ui.nav.Routes
+import com.yourstore.app.ui.theme.*
 import kotlinx.coroutines.launch
 
 class CartViewModel : ViewModel() {
@@ -43,6 +50,7 @@ class CartViewModel : ViewModel() {
     var cart by mutableStateOf<Cart?>(null)
     var error by mutableStateOf<String?>(null)
     var coupon by mutableStateOf<String?>(null)
+    var couponInput by mutableStateOf("")
     var couponError by mutableStateOf<String?>(null)
     var coupons by mutableStateOf<List<Coupon>>(emptyList())
     var busy by mutableStateOf(false)
@@ -58,188 +66,185 @@ class CartViewModel : ViewModel() {
 
     private fun set(r: Cart) {
         cart = r
-        c.setCartCount(r.summary.itemCount)
+        c.setCartCount(r.summary.cartCount.takeIf { it > 0 } ?: r.items.sumOf { it.quantity })
         if (r.summary.couponError != null && coupon != null) { couponError = r.summary.couponError; coupon = null }
     }
 
-    fun setQty(variantId: Int, q: Int) {
+    private fun mutate(block: suspend () -> Cart) {
         busy = true
         viewModelScope.launch {
-            apiCall { c.api.setQty(variantId, QtyReq(q)) }.onSuccess { set(it); refreshWithCoupon() }.onFailure { message = it.message }
+            apiCall { block() }.onSuccess { set(it); if (coupon != null) apiCall { c.api.cart(coupon) }.onSuccess { set(it) } }.onFailure { message = it.message }
             busy = false
         }
     }
 
-    fun remove(variantId: Int) = setQty(variantId, 0)
+    fun setQty(variantId: Int, q: Int) = mutate { c.api.setQty(variantId, QtyReq(q)) }
+    fun remove(variantId: Int) = mutate { c.api.removeFromCart(variantId) }
+    fun select(variantId: Int, selected: Boolean) = mutate { c.api.selectItem(variantId, SelectReq(selected)) }
+    fun selectAll(selected: Boolean) = mutate { c.api.selectAll(SelectReq(selected)) }
 
-    private suspend fun refreshWithCoupon() { if (coupon != null) apiCall { c.api.cart(coupon) }.onSuccess { set(it) } }
-
-    fun applyCoupon(code: String) {
+    fun applyCoupon(code: String = couponInput) {
         if (code.isBlank()) return
         busy = true; couponError = null
         viewModelScope.launch {
-            apiCall { c.api.applyCoupon(CouponReq(code.trim())) }
-                .onSuccess { coupon = it.summary.couponCode; set(it); message = "Coupon applied — you save ${inr(it.summary.discount)}" }
+            apiCall { c.api.applyCoupon(CouponReq(code.trim().uppercase())) }
+                .onSuccess { r -> if (r.summary.couponError != null) couponError = r.summary.couponError else { coupon = r.summary.couponCode; couponInput = coupon.orEmpty(); set(r) } }
                 .onFailure { couponError = it.message }
             busy = false
         }
     }
 
-    fun removeCoupon() { coupon = null; couponError = null; load() }
+    fun removeCoupon() { coupon = null; couponInput = ""; couponError = null; load() }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CartScreen(navigate: (String) -> Unit, onBack: () -> Unit, vm: CartViewModel = viewModel()) {
+fun CartScreen(navigate: (String) -> Unit, onBack: () -> Unit, snack: (String) -> Unit, vm: CartViewModel = viewModel()) {
     LaunchedEffect(Unit) { vm.load() }
-    val snack = remember { SnackbarHostState() }
-    LaunchedEffect(vm.message) { vm.message?.let { snack.showSnackbar(it); vm.message = null } }
-    var showCoupons by remember { mutableStateOf(false) }
-    val cart = vm.cart
+    LaunchedEffect(vm.message) { vm.message?.let { snack(it); vm.message = null } }
+    CartContent(
+        cart = vm.cart, error = vm.error, busy = vm.busy,
+        couponInput = vm.couponInput, onCouponInput = { vm.couponInput = it; vm.couponError = null }, appliedCoupon = vm.coupon,
+        couponError = vm.couponError, coupons = vm.coupons, onApplyCoupon = { vm.applyCoupon(it) }, onRemoveCoupon = { vm.removeCoupon() },
+        onQty = { id, q -> vm.setQty(id, q) }, onRemove = { vm.remove(it) }, onSelect = { id, s -> vm.select(id, s) }, onSelectAll = { vm.selectAll(it) },
+        onRetry = { vm.load() }, onBack = onBack, onShop = { navigate(Routes.HOME) },
+        onItem = { navigate(Routes.product(it)) },
+        onCheckout = { navigate(Routes.checkout(vm.coupon)) },
+    )
+}
 
-    Scaffold(
-        containerColor = Color.White,
-        topBar = { AppTopBar("My Cart", onBack) { Icon(Icons.Outlined.ShoppingBag, null, tint = Ink, modifier = Modifier.padding(end = 14.dp)) } },
-        snackbarHost = { SnackbarHost(snack) },
-        bottomBar = {
-            if (cart != null && cart.items.isNotEmpty()) Surface(
-                color = Color.White, shadowElevation = 16.dp,
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            ) {
-                Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 24.dp).padding(top = 10.dp, bottom = 16.dp)) {
-                    Box(Modifier.align(Alignment.CenterHorizontally).size(40.dp, 4.dp).clip(CircleShape).background(Line))
-                    Spacer(Modifier.height(16.dp))
-                    CouponBox(vm, onBrowse = { showCoupons = true })
-                    Spacer(Modifier.height(16.dp))
-                    BillLines(cart.summary)
-                    Spacer(Modifier.height(16.dp))
-                    PillButton("Checkout", onClick = { navigate(Routes.checkout(vm.coupon)) }, enabled = cart.problems.isEmpty() && !vm.busy, modifier = Modifier.fillMaxWidth())
-                }
-            }
-        },
-    ) { pad ->
-        when {
-            vm.error != null -> ErrorState(vm.error!!, vm::load, Modifier.padding(pad).fillMaxSize())
-            cart == null -> LoadingBox(Modifier.padding(pad).fillMaxSize())
-            cart.items.isEmpty() -> Box(Modifier.padding(pad)) {
-                EmptyState(Icons.Outlined.ShoppingBag, "Your cart is empty", "Add products to see them here", "Start Shopping") { navigate(Routes.HOME) }
-            }
-            else -> LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)) {
-                if (cart.problems.isNotEmpty()) item {
-                    Column(Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(RoundedCornerShape(12.dp)).background(HotBg).padding(12.dp)) {
-                        Text("Please update your cart", fontWeight = FontWeight.SemiBold, color = Warning)
-                        cart.problems.forEach { Text("• ${it.message}", style = MaterialTheme.typography.bodySmall) }
+@Composable
+fun CartContent(
+    cart: Cart?, error: String?, busy: Boolean,
+    couponInput: String, onCouponInput: (String) -> Unit, appliedCoupon: String?, couponError: String?, coupons: List<Coupon>,
+    onApplyCoupon: (String) -> Unit, onRemoveCoupon: () -> Unit,
+    onQty: (Int, Int) -> Unit, onRemove: (Int) -> Unit, onSelect: (Int, Boolean) -> Unit, onSelectAll: (Boolean) -> Unit,
+    onRetry: () -> Unit, onBack: () -> Unit, onShop: () -> Unit, onItem: (Int) -> Unit, onCheckout: () -> Unit,
+) {
+    Box(Modifier.fillMaxSize().background(Color.White)) {
+        Column(Modifier.fillMaxSize()) {
+            KTopBar("My Cart", onBack = onBack) { IconBtn(Icons.Outlined.ShoppingBag, "Shop", onShop) }
+            when {
+                cart == null && error != null -> ErrorState(error, onRetry)
+                cart == null -> LoadingBox()
+                cart.items.isEmpty() -> EmptyState(Icons.Outlined.ShoppingBag, "Your cart is empty", "Add something you love and it will show up here.", "Start Shopping", onShop)
+                else -> {
+                    val allSelected = cart.items.all { it.selected }
+                    Row(Modifier.fillMaxWidth().padding(horizontal = PagePad, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        KCheckbox(allSelected, onSelectAll)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Select all (${cart.items.size})", fontSize = 13.sp, color = InkMuted, modifier = Modifier.weight(1f))
                     }
-                }
-                val s = cart.summary
-                if (s.deliveryCharge > 0 && s.freeDeliveryAbove > 0) item {
-                    Text("Add ${inr(s.freeDeliveryAbove - (s.subtotal - s.discount))} more for FREE delivery", color = Brand,
-                        style = MaterialTheme.typography.bodySmall.copy(color = Brand, fontWeight = FontWeight.Medium),
-                        modifier = Modifier.fillMaxWidth().clip(CircleShape).background(BrandSoft).padding(horizontal = 14.dp, vertical = 8.dp))
-                }
-                items(cart.items, key = { it.variantId }) { item ->
-                    val problem = cart.problems.any { p -> p.variantId == item.variantId }
-                    Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        NetImage(item.image, Modifier.size(78.dp).clip(RoundedCornerShape(12.dp)).clickable { navigate(Routes.product(item.productId)) })
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.Top) {
-                                Text(item.name, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                Icon(Icons.Outlined.DeleteOutline, "Remove", tint = Warning, modifier = Modifier.size(20.dp).clickable(enabled = !vm.busy) { vm.remove(item.variantId) })
-                            }
-                            Text(buildString { append("Size: "); append(item.label) }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp))
-                            if (problem) Text(if (item.stock > 0) "Only ${item.stock} available" else "Out of stock", color = Warning, fontSize = 12.sp)
-                            Spacer(Modifier.height(8.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                QuantityStepper(item.quantity, { q -> vm.setQty(item.variantId, q) }, max = item.stock.coerceAtLeast(item.quantity), enabled = !vm.busy)
-                                Spacer(Modifier.weight(1f))
-                                PriceTag(item.lineTotal, size = 20)
-                            }
+                    LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(start = PagePad, end = PagePad, bottom = 380.dp)) {
+                        items(cart.items, key = { it.variantId }) { item ->
+                            val problem = cart.problems.firstOrNull { it.variantId == item.variantId }?.message
+                            CartRow(item, problem, busy, onQty, onRemove, onSelect, onItem)
+                            HorizontalDivider(color = Line)
                         }
                     }
-                    HorizontalDivider(color = Line)
                 }
             }
         }
-    }
-
-    if (showCoupons) ModalBottomSheet(onDismissRequest = { showCoupons = false }, containerColor = Color.White) {
-        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 28.dp)) {
-            Text("Available coupons", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(10.dp))
-            if (vm.coupons.isEmpty()) Text("No coupons available right now", color = InkMuted)
-            vm.coupons.forEach { cp ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(RoundedCornerShape(12.dp)).background(Field).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(cp.code, fontWeight = FontWeight.Bold, color = Brand)
-                        Text((cp.description ?: (if (cp.discountType == "percent") "${cp.discountValue.toInt()}% off" else "${inr(cp.discountValue)} off")) +
-                            if (cp.minOrderValue > 0) " · Min. order ${inr(cp.minOrderValue)}" else "", style = MaterialTheme.typography.bodySmall)
-                    }
-                    Text("Apply", color = Brand, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.applyCoupon(cp.code); showCoupons = false }.padding(6.dp))
-                }
+        if (cart != null && cart.items.isNotEmpty()) {
+            SheetPanel(Modifier.align(Alignment.BottomCenter).navigationBarsPadding()) {
+                PromoField(couponInput, onCouponInput, appliedCoupon, couponError, coupons, onApplyCoupon, onRemoveCoupon)
+                Spacer(Modifier.height(20.dp))
+                CartSummaryLines(cart.summary)
+                Spacer(Modifier.height(20.dp))
+                KButton(if (cart.summary.itemCount == 0) "Select items to checkout" else "Checkout", onCheckout, Modifier.fillMaxWidth(),
+                    enabled = cart.summary.itemCount > 0 && cart.problems.none { p -> cart.items.any { it.variantId == p.variantId && it.selected } })
+                Spacer(Modifier.height(20.dp))
             }
         }
     }
 }
 
-/** Promo code field in the kit's style: icon, placeholder, chevron/apply on the right. */
 @Composable
-private fun CouponBox(vm: CartViewModel, onBrowse: () -> Unit) {
-    var code by remember { mutableStateOf("") }
-    if (vm.coupon != null) {
-        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(PopularBg).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.Discount, null, tint = Discount)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text("${vm.coupon} applied", fontWeight = FontWeight.SemiBold)
-                Text("You save ${inr(vm.cart?.summary?.discount ?: 0.0)}", color = Discount, fontSize = 12.sp)
-            }
-            IconButton(onClick = vm::removeCoupon) { Icon(Icons.Filled.Close, "Remove coupon", tint = InkMuted) }
-        }
-    } else {
-        OutlinedTextField(
-            value = code, onValueChange = { code = it.uppercase().trim() }, singleLine = true,
-            placeholder = { Text("Enter your promo code", color = InkHint, fontSize = 13.sp) },
-            leadingIcon = { Icon(Icons.Outlined.Discount, null, tint = InkHint) },
-            trailingIcon = {
-                if (code.isBlank()) IconButton(onClick = onBrowse) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "View coupons", tint = Ink) }
-                else TextButton(onClick = { vm.applyCoupon(code) }, enabled = !vm.busy) { Text("Apply", color = Brand) }
-            },
-            isError = vm.couponError != null,
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Brand, unfocusedContainerColor = Color.White),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        vm.couponError?.let { Text(it, color = Warning, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)) }
+fun CartSummaryLines(s: CartSummary) {
+    BillLine("Subtotal", s.subtotal)
+    if (s.discount > 0) Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Text("Discount${s.couponCode?.let { " ($it)" } ?: ""}", color = Discount, fontSize = 14.sp, modifier = Modifier.weight(1f))
+        Text("- ${inr(s.discount)}", color = Discount, fontSize = 15.sp, fontWeight = FontWeight.Medium)
     }
+    BillLine("Shipping", s.deliveryCharge)
+    Spacer(Modifier.height(10.dp))
+    DashedDivider()
+    Spacer(Modifier.height(10.dp))
+    BillLine("Total amount", s.total, bold = true)
 }
 
-/** Subtotal / discount / shipping, dashed divider, total — the kit's bill block. */
 @Composable
-fun BillLines(s: CartSummary) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        BillLine("Subtotal", inr(s.subtotal))
-        if (s.mrpTotal > s.subtotal) BillLine("You save on MRP", "− ${inr(s.mrpTotal - s.subtotal)}", Discount)
-        if (s.discount > 0) BillLine("Coupon ${s.couponCode ?: ""}", "− ${inr(s.discount)}", Discount)
-        BillLine("Shipping", if (s.deliveryCharge > 0) inr(s.deliveryCharge) else "FREE", if (s.deliveryCharge > 0) null else Discount)
-        DashedDivider(Modifier.padding(vertical = 4.dp))
+private fun CartRow(
+    item: CartItem, problem: String?, busy: Boolean,
+    onQty: (Int, Int) -> Unit, onRemove: (Int) -> Unit, onSelect: (Int, Boolean) -> Unit, onItem: (Int) -> Unit,
+) {
+    Column(Modifier.padding(vertical = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Total amount", color = InkMuted, modifier = Modifier.weight(1f))
-            PriceTag(s.total, size = 20)
+            KCheckbox(item.selected, { onSelect(item.variantId, it) })
+            Spacer(Modifier.width(16.dp))
+            NetImage(item.image, Modifier.size(76.dp, 90.dp).clip(RoundedCornerShape(8.dp)).clickable { onItem(item.productId) })
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.Top) {
+                    Text(item.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Icon(Icons.Outlined.DeleteOutline, "Remove", Modifier.padding(start = 4.dp).size(18.dp).clip(CircleShape).clickable { onRemove(item.variantId) }, tint = InkHint)
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(variantText(item.color, item.label), fontSize = 13.sp, maxLines = 1)
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { KStepper(item.quantity, { onQty(item.variantId, it) }, max = item.stock.coerceIn(1, 50), enabled = !busy) }
+                    PriceTag(item.price * item.quantity, size = 22)
+                }
+            }
         }
+        if (problem != null) Text(problem, color = Warning, fontSize = 12.sp, modifier = Modifier.padding(start = 36.dp, top = 8.dp))
     }
 }
 
-/** Kept for the checkout screen: the bill block on a white card. */
-@Composable
-fun BillSummary(s: CartSummary) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Field).padding(16.dp)) { BillLines(s) }
+/** "Color: Brown" with the label in grey and the value in ink; falls back to the size label. */
+fun variantText(color: String?, label: String?) = buildAnnotatedString {
+    val (k, v) = when {
+        !color.isNullOrBlank() -> "Color: " to color + (label?.takeIf { it.isNotBlank() && it != "Default" && it != color }?.let { " · $it" } ?: "")
+        else -> "Variant: " to (label ?: "")
+    }
+    withStyle(SpanStyle(color = InkHint)) { append(k) }
+    withStyle(SpanStyle(color = Ink2)) { append(v) }
 }
 
 @Composable
-private fun BillLine(label: String, value: String, color: androidx.compose.ui.graphics.Color? = null) {
-    Row {
-        Text(label, modifier = Modifier.weight(1f), color = InkMuted)
-        Text(value, color = color ?: Ink, fontWeight = FontWeight.Medium)
+private fun PromoField(
+    value: String, onValue: (String) -> Unit, applied: String?, error: String?, coupons: List<Coupon>,
+    onApply: (String) -> Unit, onRemove: () -> Unit,
+) {
+    var showList by remember { mutableStateOf(false) }
+    Row(
+        Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(12.dp)).background(Field)
+            .border(1.dp, if (error != null) Warning else Line, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Discount, "Offers", Modifier.size(22.dp).clickable { showList = !showList }, tint = if (applied != null) Brand else InkHint)
+        Spacer(Modifier.width(12.dp))
+        Box(Modifier.weight(1f)) {
+            if (value.isEmpty()) Text("Enter your promo code", fontSize = 13.sp, color = InkHint)
+            BasicTextField(value, { onValue(it.uppercase()) }, singleLine = true, readOnly = applied != null,
+                textStyle = TextStyle(fontFamily = Outfit, fontSize = 14.sp, color = Ink, fontWeight = FontWeight.Medium), cursorBrush = SolidColor(Brand),
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onApply(value) }), modifier = Modifier.fillMaxWidth())
+        }
+        if (applied != null) Icon(Icons.Filled.Close, "Remove coupon", Modifier.size(20.dp).clickable(onClick = onRemove), tint = InkMuted)
+        else Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Apply", Modifier.size(24.dp).clickable { if (value.isBlank()) showList = !showList else onApply(value) }, tint = Ink)
+    }
+    if (error != null) Text(error, color = Warning, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp, start = 4.dp))
+    if (showList && applied == null && coupons.isNotEmpty()) {
+        Spacer(Modifier.height(10.dp))
+        coupons.take(3).forEach { cp ->
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { showList = false; onValue(cp.code); onApply(cp.code) }.padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(cp.code, color = Brand, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
+                    modifier = Modifier.border(1.dp, BrandLight, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(cp.description ?: "", fontSize = 12.sp, color = InkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
     }
 }

@@ -34,8 +34,10 @@ object PaymentBus {
                 put("contact", order.prefill.contact)
                 if (order.prefill.email.isNotBlank()) put("email", order.prefill.email)
                 if (order.prefill.name.isNotBlank()) put("name", order.prefill.name)
+                // Opens Razorpay on the method chosen in "Change Payment Method"
+                order.preferredMethod?.let { put("method", it) }
             })
-            put("theme", JSONObject().put("color", "#0F766E"))
+            put("theme", JSONObject().put("color", "#514EB7"))
             put("retry", JSONObject().put("enabled", true).put("max_count", 3))
         }
         co.open(activity, options)

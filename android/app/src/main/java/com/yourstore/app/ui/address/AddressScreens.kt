@@ -1,36 +1,35 @@
 package com.yourstore.app.ui.address
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.outlined.GpsFixed
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Place
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.sp
-import com.yourstore.app.ui.theme.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -38,8 +37,10 @@ import com.yourstore.app.ShopApp
 import com.yourstore.app.data.apiCall
 import com.yourstore.app.data.model.Address
 import com.yourstore.app.data.model.AddressReq
+import com.yourstore.app.ui.checkout.MapThumb
 import com.yourstore.app.ui.components.*
 import com.yourstore.app.ui.nav.Routes
+import com.yourstore.app.ui.theme.*
 import kotlinx.coroutines.launch
 
 val INDIAN_STATES = listOf(
@@ -53,58 +54,95 @@ class AddressesViewModel : ViewModel() {
     private val c = ShopApp.container
     var list by mutableStateOf<List<Address>?>(null)
     var error by mutableStateOf<String?>(null)
-    fun load() { viewModelScope.launch { apiCall { c.api.addresses() }.onSuccess { list = it }.onFailure { error = it.message } } }
+    var selectedId by mutableStateOf<Int?>(null)
+    var query by mutableStateOf("")
+    fun load() {
+        viewModelScope.launch {
+            apiCall { c.api.addresses() }.onSuccess { l ->
+                list = l
+                if (selectedId == null || l.none { it.id == selectedId }) selectedId = (l.firstOrNull { it.isDefault == 1 } ?: l.firstOrNull())?.id
+            }.onFailure { error = it.message }
+        }
+    }
     fun delete(a: Address) { viewModelScope.launch { apiCall { c.api.deleteAddress(a.id) }.onSuccess { load() }.onFailure { error = it.message } } }
 }
 
+/** "Address" frame: search box, "Select location" cards with a round map, and Confirm. */
 @Composable
-fun AddressListScreen(navigate: (String) -> Unit, onBack: () -> Unit, vm: AddressesViewModel = viewModel()) {
+fun AddressListScreen(navigate: (String) -> Unit, onBack: () -> Unit, onConfirm: (Int) -> Unit, vm: AddressesViewModel = viewModel()) {
     LaunchedEffect(Unit) { vm.load() }
-    var confirm by remember { mutableStateOf<Address?>(null) }
-    Scaffold(
-        containerColor = Color.White,
-        topBar = { AppTopBar("Address", onBack) },
-        bottomBar = { PillButton("Add New Address", { navigate(Routes.addressForm()) }, icon = Icons.Filled.Add, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(20.dp)) },
-    ) { pad ->
-        val list = vm.list
+    var confirmDelete by remember { mutableStateOf<Address?>(null) }
+    AddressListContent(
+        list = vm.list, error = vm.error, query = vm.query, onQuery = { vm.query = it }, selectedId = vm.selectedId, onSelect = { vm.selectedId = it.id },
+        onEdit = { navigate(Routes.addressForm(it.id)) }, onDelete = { confirmDelete = it }, onAdd = { navigate(Routes.addressForm()) },
+        onConfirm = { vm.selectedId?.let(onConfirm) }, onBack = onBack, onRetry = { vm.load() },
+    )
+    confirmDelete?.let { a ->
+        AlertDialog(onDismissRequest = { confirmDelete = null }, containerColor = Color.White, title = { Text("Delete address?") }, text = { Text(a.oneLine(), color = InkMuted) },
+            confirmButton = { TextButton(onClick = { vm.delete(a); confirmDelete = null }) { Text("Delete", color = Warning) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel", color = Ink) } })
+    }
+}
+
+@Composable
+fun AddressListContent(
+    list: List<Address>?, error: String?, query: String, onQuery: (String) -> Unit, selectedId: Int?, onSelect: (Address) -> Unit,
+    onEdit: (Address) -> Unit, onDelete: (Address) -> Unit, onAdd: () -> Unit, onConfirm: () -> Unit, onBack: () -> Unit, onRetry: () -> Unit,
+) {
+    Column(Modifier.fillMaxSize().background(Color.White)) {
+        KTopBar("Address", onBack = onBack)
         when {
-            list == null && vm.error != null -> ErrorState(vm.error!!, vm::load, Modifier.padding(pad))
-            list == null -> LoadingBox(Modifier.padding(pad).fillMaxSize())
-            list.isEmpty() -> Box(Modifier.padding(pad)) { EmptyState(Icons.Outlined.LocationOn, "No saved addresses", "Add an address for faster checkout") }
-            else -> LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                item {
-                    Text("Your locations", style = MaterialTheme.typography.titleMedium)
-                    Text("Addresses you've saved for delivery.", color = InkMuted, modifier = Modifier.padding(top = 4.dp))
-                }
-                items(list, key = { it.id }) { a ->
-                    val def = a.isDefault == 1
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).border(1.dp, if (def) Brand else Line, RoundedCornerShape(14.dp)).padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(a.name, style = MaterialTheme.typography.titleSmall)
-                                if (def) Text("Default", color = Brand, fontSize = 11.sp, modifier = Modifier.padding(start = 8.dp).clip(CircleShape).background(BrandSoft).padding(horizontal = 8.dp, vertical = 2.dp))
-                            }
-                            Text(a.oneLine(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-                            Text("Phone: ${a.phone}", style = MaterialTheme.typography.bodySmall)
-                            Row(Modifier.padding(top = 6.dp)) {
-                                Text("Edit", color = Brand, fontSize = 13.sp, modifier = Modifier.clickable { navigate(Routes.addressForm(a.id)) }.padding(end = 16.dp, top = 4.dp, bottom = 4.dp))
-                                Text("Delete", color = Warning, fontSize = 13.sp, modifier = Modifier.clickable { confirm = a }.padding(vertical = 4.dp))
-                            }
-                        }
-                        Box(Modifier.size(54.dp).clip(CircleShape).background(if (def) BrandSoft else Tile).border(2.dp, if (def) Brand else Color.Transparent, CircleShape),
-                            contentAlignment = Alignment.Center) { Icon(Icons.Filled.LocationOn, null, tint = if (def) Brand else InkHint) }
+            list == null && error != null -> ErrorState(error, onRetry)
+            list == null -> LoadingBox()
+            else -> {
+                val shown = list.filter { query.isBlank() || it.oneLine().contains(query, true) || it.name.contains(query, true) }
+                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = PagePad, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    item {
+                        Text("Choose your location", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                        Spacer(Modifier.height(10.dp))
+                        Text("Let's find where your order should go. Choose a location below to get started.", fontSize = 14.sp, color = InkHint, lineHeight = 22.sp)
+                        Spacer(Modifier.height(24.dp))
+                        KField(query, onQuery, "Search your saved locations", icon = Icons.Outlined.LocationOn,
+                            trailing = { Icon(Icons.Outlined.GpsFixed, null, Modifier.size(22.dp), tint = InkMuted) })
+                        Spacer(Modifier.height(16.dp))
+                        Text("Select location", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                     }
+                    if (list.isEmpty()) item { Text("You have no saved addresses yet. Add one to continue.", color = InkMuted, fontSize = 14.sp) }
+                    items(shown, key = { it.id }) { a -> LocationCard(a, a.id == selectedId, { onSelect(a) }, { onEdit(a) }, { onDelete(a) }) }
+                    item {
+                        KOutlinedButton("Add New Address", onAdd, Modifier.fillMaxWidth(), color = Brand, borderColor = BrandLight,
+                            leading = { Icon(Icons.Filled.Add, null, tint = Brand, modifier = Modifier.size(20.dp)) })
+                    }
+                }
+                Box(Modifier.navigationBarsPadding().padding(horizontal = PagePad, vertical = 16.dp)) {
+                    KButton("Confirm", onConfirm, Modifier.fillMaxWidth(), enabled = selectedId != null)
                 }
             }
         }
     }
-    confirm?.let { a ->
-        AlertDialog(onDismissRequest = { confirm = null }, containerColor = Color.White, title = { Text("Delete address?") }, text = { Text(a.oneLine(), color = InkMuted) },
-            confirmButton = { TextButton(onClick = { vm.delete(a); confirm = null }) { Text("Delete", color = Warning) } },
-            dismissButton = { TextButton(onClick = { confirm = null }) { Text("Cancel", color = Ink) } })
+}
+
+@Composable
+private fun LocationCard(a: Address, selected: Boolean, onClick: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).border(1.dp, if (selected) Brand else Line, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick).padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(a.name.ifBlank { a.city }, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Ink)
+            Spacer(Modifier.height(6.dp))
+            Text(a.oneLine(), fontSize = 12.sp, color = InkMuted, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 18.sp)
+            Row(Modifier.padding(top = 6.dp)) {
+                TextLink("Edit", onEdit, fontSize = 12)
+                Spacer(Modifier.width(14.dp))
+                TextLink("Delete", onDelete, color = Warning, fontSize = 12)
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Box(Modifier.size(70.dp).clip(CircleShape).border(if (selected) 3.dp else 1.dp, if (selected) Brand else Line, CircleShape).padding(4.dp)) {
+            MapThumb(Modifier.fillMaxSize().clip(CircleShape), pinColor = if (selected) Color(0xFF14B8A6) else Brand)
+        }
     }
 }
 
@@ -124,7 +162,7 @@ class AddressFormViewModel(private val id: Int?) : ViewModel() {
                     name = a.name; phone = a.phone; line1 = a.line1; line2 = a.line2.orEmpty(); landmark = a.landmark.orEmpty()
                     city = a.city; state = a.state; pincode = a.pincode; isDefault = a.isDefault == 1
                 }
-            } else apiCall { c.api.profile() }.onSuccess { p -> if (name.isBlank()) name = p.name.orEmpty(); if (phone.isBlank()) phone = p.mobile }
+            } else apiCall { c.api.profile() }.onSuccess { p -> if (name.isBlank()) name = p.name.orEmpty(); if (phone.isBlank()) phone = p.mobile.orEmpty() }
         }
     }
 
@@ -153,52 +191,42 @@ class AddressFormViewModel(private val id: Int?) : ViewModel() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddressFormScreen(id: Int?, onBack: () -> Unit) {
     val vm: AddressFormViewModel = viewModel(key = "addr-$id") { AddressFormViewModel(id) }
     var stateOpen by remember { mutableStateOf(false) }
-    Scaffold(
-        containerColor = Color.White,
-        topBar = { AppTopBar(if (id == null) "Add Address" else "Edit Address", onBack) },
-        bottomBar = { PillButton("Confirm", { vm.save(onBack) }, loading = vm.saving, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(20.dp)) },
-    ) { pad ->
-        Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Choose your location", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
-            Text("Enter the delivery address where you'd like your order delivered.", color = InkMuted, modifier = Modifier.offset(y = (-10).dp))
-            KField("Full Name", vm.name, { vm.name = it }, "Recipient's name", Icons.Outlined.Person, error = vm.fieldError("name"))
-            KField("Phone Number", vm.phone, { vm.phone = it.filter(Char::isDigit).take(10) }, "10-digit mobile number", Icons.Outlined.PhoneAndroid,
-                keyboardType = KeyboardType.Phone, prefix = "+91 ", error = vm.fieldError("phone"))
-            KField("House no., building, street", vm.line1, { vm.line1 = it }, "e.g. H.No 12, Sector 70", Icons.Outlined.Home, error = vm.fieldError("line1"))
-            KField("Area, locality", vm.line2, { vm.line2 = it }, "Optional", Icons.Outlined.Map)
-            KField("Landmark", vm.landmark, { vm.landmark = it }, "Optional", Icons.Outlined.Place)
+    Column(Modifier.fillMaxSize().background(Color.White)) {
+        KTopBar(if (id == null) "Add Address" else "Edit Address", onBack = onBack)
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).imePadding().padding(horizontal = PagePad), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            Spacer(Modifier.height(4.dp))
+            KField(vm.name, { vm.name = it }, "Recipient's name", label = "Full Name", icon = Icons.Outlined.Person, error = vm.fieldError("name"))
+            KField(vm.phone, { vm.phone = it.filter(Char::isDigit).take(10) }, "10-digit mobile number", label = "Phone Number", icon = Icons.Outlined.PhoneAndroid,
+                keyboardType = KeyboardType.Phone, error = vm.fieldError("phone"))
+            KField(vm.line1, { vm.line1 = it }, "e.g. H.No 12, Sector 70", label = "House no., building, street", icon = Icons.Outlined.Home, error = vm.fieldError("line1"))
+            KField(vm.line2, { vm.line2 = it }, "Optional", label = "Area, locality", icon = Icons.Outlined.Map)
+            KField(vm.landmark, { vm.landmark = it }, "Optional", label = "Landmark", icon = Icons.Outlined.Place)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                KField("City", vm.city, { vm.city = it }, "City", error = vm.fieldError("city"), modifier = Modifier.weight(1f))
-                KField("Pincode", vm.pincode, { vm.pincode = it.filter(Char::isDigit).take(6) }, "6 digits", keyboardType = KeyboardType.Number,
+                KField(vm.city, { vm.city = it }, "City", label = "City", error = vm.fieldError("city"), modifier = Modifier.weight(1f))
+                KField(vm.pincode, { vm.pincode = it.filter(Char::isDigit).take(6) }, "6 digits", label = "Pincode", keyboardType = KeyboardType.Number,
                     error = vm.fieldError("pincode"), modifier = Modifier.weight(1f))
             }
-            Column {
-                Text("State", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(8.dp))
-                ExposedDropdownMenuBox(expanded = stateOpen, onExpandedChange = { stateOpen = it }) {
-                    OutlinedTextField(vm.state, {}, readOnly = true, placeholder = { Text("Select state", color = InkHint) }, isError = vm.fieldError("state") != null,
-                        leadingIcon = { Icon(Icons.Outlined.LocationOn, null, tint = InkHint) },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(stateOpen) },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = Field, focusedContainerColor = Color.White, unfocusedBorderColor = Line, focusedBorderColor = Brand),
-                        modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable))
-                    ExposedDropdownMenu(expanded = stateOpen, onDismissRequest = { stateOpen = false }) {
-                        INDIAN_STATES.forEach { st -> DropdownMenuItem(text = { Text(st) }, onClick = { vm.state = st; stateOpen = false }) }
-                    }
+            Box {
+                KField(vm.state, {}, "Select state", label = "State", icon = Icons.Outlined.LocationOn, readOnly = true, error = vm.fieldError("state"))
+                Box(Modifier.matchParentSize().clickable { stateOpen = true })
+                DropdownMenu(stateOpen, { stateOpen = false }, Modifier.heightIn(max = 360.dp).background(Color.White)) {
+                    INDIAN_STATES.forEach { st -> DropdownMenuItem(text = { Text(st) }, onClick = { vm.state = st; stateOpen = false }) }
                 }
-                vm.fieldError("state")?.let { Text(it, color = Warning, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, start = 4.dp)) }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(vm.isDefault, { vm.isDefault = it }, colors = CheckboxDefaults.colors(checkedColor = Brand))
-                Text("Make this my default address")
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { vm.isDefault = !vm.isDefault }) {
+                KCheckbox(vm.isDefault, { vm.isDefault = it })
+                Spacer(Modifier.width(12.dp))
+                Text("Make this my default address", fontSize = 14.sp, color = Ink)
             }
-            vm.error?.let { Text(it, color = Warning) }
+            vm.error?.let { Text(it, color = Warning, fontSize = 13.sp) }
             Spacer(Modifier.height(8.dp))
+        }
+        Box(Modifier.navigationBarsPadding().padding(horizontal = PagePad, vertical = 16.dp)) {
+            KButton("Save Address", { vm.save(onBack) }, Modifier.fillMaxWidth(), loading = vm.saving)
         }
     }
 }

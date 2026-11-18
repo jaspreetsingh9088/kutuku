@@ -5,14 +5,24 @@ package com.yourstore.app.data.model
 
 data class Customer(
     val id: Int = 0,
-    val mobile: String = "",
+    val mobile: String? = null,
     val name: String? = null,
     val email: String? = null,
     val gstin: String? = null,
+    val avatarUrl: String? = null,
+    val hasPassword: Boolean = false,
+    val notifPayment: Int = 1,
+    val notifTracking: Int = 1,
+    val notifComplete: Int = 1,
+    val notifGeneral: Int = 1,
     val orderCount: Int = 0,
-)
+    val unreadNotifications: Int = 0,
+) {
+    val contact: String get() = email ?: mobile?.let { "+91 $it" } ?: ""
+}
 
 data class AuthResponse(val token: String = "", val isNew: Boolean = false, val customer: Customer = Customer())
+data class ResetToken(val resetToken: String = "")
 
 data class Banner(
     val id: Int = 0,
@@ -33,12 +43,29 @@ data class Category(
     val children: List<Category>? = null,
 )
 
+data class Store(
+    val id: Int = 0,
+    val name: String = "",
+    val slug: String = "",
+    val logoUrl: String? = null,
+    val description: String? = null,
+    val city: String? = null,
+    val isVerified: Boolean = false,
+    val productCount: Int = 0,
+    val followerCount: Int = 0,
+    val following: Boolean = false,
+    val banners: List<Banner>? = null,
+    val popular: List<Product>? = null,
+)
+
 data class ProductImage(val id: Int = 0, val url: String = "")
 
 data class Variant(
     val id: Int = 0,
     val sku: String = "",
     val label: String = "",
+    val color: String? = null,
+    val colorHex: String? = null,
     val mrp: Double = 0.0,
     val price: Double = 0.0,
     val stock: Int = 0,
@@ -63,6 +90,10 @@ data class Product(
     val mrp: Double? = null,
     val inStock: Boolean = false,
     val wishlisted: Boolean = false,
+    val rating: Double = 0.0,
+    val ratingCount: Int = 0,
+    val soldCount: Int = 0,
+    val store: Store? = null,
     val related: List<Product>? = null,
 )
 
@@ -76,13 +107,26 @@ data class Home(
 
 data class PageMeta(val page: Int = 1, val limit: Int = 20, val total: Int = 0, val pages: Int = 0)
 data class Paged<T>(val data: List<T> = emptyList(), val meta: PageMeta = PageMeta())
+data class ProductPage(val data: List<Product> = emptyList(), val meta: PageMeta = PageMeta(), val stores: List<Store>? = null)
+
+data class PopularSearch(
+    val term: String = "", val count: Int = 0, val productId: Int = 0, val productName: String = "",
+    val image: String? = null, val tag: String = "new",
+)
+
+data class PriceRange(val min: Double = 0.0, val max: Double = 0.0)
+data class ColorOption(val name: String = "", val hex: String? = null)
+data class Filters(val price: PriceRange = PriceRange(), val colors: List<ColorOption> = emptyList(), val cities: List<String> = emptyList())
 
 data class CartItem(
     val variantId: Int = 0,
     val productId: Int = 0,
     val quantity: Int = 0,
+    val selected: Boolean = true,
     val sku: String = "",
     val label: String = "",
+    val color: String? = null,
+    val colorHex: String? = null,
     val name: String = "",
     val image: String? = null,
     val mrp: Double = 0.0,
@@ -97,6 +141,7 @@ data class CartProblem(val variantId: Int = 0, val message: String = "")
 
 data class CartSummary(
     val itemCount: Int = 0,
+    val cartCount: Int = 0,
     val mrpTotal: Double = 0.0,
     val subtotal: Double = 0.0,
     val savings: Double = 0.0,
@@ -149,6 +194,7 @@ data class PlacedOrder(
     val razorpayKeyId: String = "",
     val amountPaise: Long = 0,
     val currency: String = "INR",
+    val preferredMethod: String? = null,
     val prefill: Prefill = Prefill(),
 )
 
@@ -162,6 +208,9 @@ data class OrderSummary(
     val itemCount: Int = 0,
     val image: String? = null,
     val firstItem: String? = null,
+    val firstVariant: String? = null,
+    val firstQuantity: Int = 0,
+    val firstColor: String? = null,
 )
 
 data class OrderItem(
@@ -170,6 +219,7 @@ data class OrderItem(
     val variantId: Int? = null,
     val productName: String = "",
     val variantLabel: String = "",
+    val variantColor: String? = null,
     val imageUrl: String? = null,
     val unitPrice: Double = 0.0,
     val mrp: Double = 0.0,
@@ -193,6 +243,9 @@ data class OrderDetail(
     val invoiceNumber: String? = null,
     val cancelReason: String? = null,
     val razorpayPaymentId: String? = null,
+    val courierName: String? = null,
+    val courierPhone: String? = null,
+    val trackingUrl: String? = null,
     val createdAt: String = "",
     val shippingAddress: Address = Address(),
     val items: List<OrderItem> = emptyList(),
@@ -210,22 +263,77 @@ data class PaymentRecord(
     val orderNumber: String = "",
 )
 
+data class AppNotification(
+    val id: Int = 0,
+    val type: String = "general",
+    val title: String = "",
+    val body: String? = null,
+    val imageUrl: String? = null,
+    val data: Map<String, Any>? = null,
+    val isRead: Boolean = false,
+    val createdAt: String = "",
+)
+data class NotificationPage(val data: List<AppNotification> = emptyList(), val meta: PageMeta = PageMeta(), val unread: Int = 0)
+
+data class Conversation(
+    val id: Int = 0,
+    val storeId: Int = 0,
+    val name: String = "",
+    val avatarUrl: String? = null,
+    val isVerified: Boolean = false,
+    val lastMessage: String? = null,
+    val lastMessageAt: String? = null,
+    val unread: Int = 0,
+)
+
+data class ChatProduct(val id: Int = 0, val name: String = "", val image: String? = null, val price: Double? = null, val color: String? = null)
+
+data class ChatMessage(
+    val id: Int = 0,
+    val sender: String = "customer",
+    val body: String? = null,
+    val productId: Int? = null,
+    val orderId: Int? = null,
+    val createdAt: String = "",
+    val product: ChatProduct? = null,
+)
+data class MessagesResponse(val conversation: Conversation = Conversation(), val data: List<ChatMessage> = emptyList())
+
+data class OnboardingSlide(val id: Int = 0, val title: String = "", val subtitle: String? = null, val imageUrl: String = "")
+data class Faq(val id: Int = 0, val question: String = "", val answer: String = "")
+data class ContentPage(val slug: String = "", val title: String = "", val content: String = "")
+data class Review(val id: Int = 0, val rating: Int = 0, val comment: String? = null, val createdAt: String = "", val customerName: String = "", val avatarUrl: String? = null)
+
 data class VerifyResult(val success: Boolean = false, val order: OrderDetail? = null)
 data class WishlistResult(val wishlisted: Boolean = false)
+data class FollowResult(val following: Boolean = false)
+data class AvatarResult(val avatarUrl: String = "")
 data class Message(val message: String? = null, val ok: Boolean? = null, val added: Int? = null)
 
 // ---- Request bodies ----
 data class SendOtpReq(val mobile: String)
 data class VerifyOtpReq(val mobile: String, val otp: String, val fcmToken: String?)
+data class RegisterReq(val name: String, val identifier: String, val password: String)
+data class RegisterVerifyReq(val name: String, val identifier: String, val password: String, val otp: String, val fcmToken: String?)
+data class LoginReq(val identifier: String, val password: String, val fcmToken: String?)
+data class IdentifierReq(val identifier: String)
+data class VerifyCodeReq(val identifier: String, val otp: String)
+data class ResetPasswordReq(val resetToken: String, val password: String, val fcmToken: String?)
+data class ChangePasswordReq(val current: String?, val password: String)
+data class NotificationSettingsReq(val payment: Boolean, val tracking: Boolean, val completeOrder: Boolean, val general: Boolean)
 data class ProfileReq(val name: String, val email: String?, val gstin: String?)
 data class TokenReq(val token: String)
 data class AddCartReq(val variantId: Int, val quantity: Int)
 data class QtyReq(val quantity: Int)
+data class SelectReq(val selected: Boolean)
 data class CouponReq(val code: String)
 data class AddressReq(
     val name: String, val phone: String, val line1: String, val line2: String?, val landmark: String?,
     val city: String, val state: String, val pincode: String, val isDefault: Boolean,
 )
-data class PlaceOrderReq(val addressId: Int, val couponCode: String?)
+data class PlaceOrderReq(val addressId: Int, val couponCode: String?, val preferredMethod: String?)
 data class VerifyPaymentReq(val razorpayOrderId: String, val razorpayPaymentId: String, val razorpaySignature: String)
 data class ReasonReq(val reason: String?)
+data class ConversationReq(val storeId: Int)
+data class SendMessageReq(val body: String?, val productId: Int? = null, val orderId: Int? = null)
+data class ReviewReq(val rating: Int, val comment: String?)
