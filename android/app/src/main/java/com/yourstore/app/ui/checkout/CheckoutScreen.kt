@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
@@ -286,7 +287,7 @@ private fun SuccessSheet(onTrack: () -> Unit, onHome: () -> Unit) {
                 Icon(Icons.Outlined.LocalMall, null, tint = Color.White, modifier = Modifier.size(56.dp))
             }
             Box(Modifier.align(Alignment.TopEnd).offset(x = (-14).dp, y = 18.dp).size(36.dp).clip(CircleShape).background(Success), contentAlignment = Alignment.Center) {
-                Icon(androidx.compose.material.icons.Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
         Spacer(Modifier.height(32.dp))
