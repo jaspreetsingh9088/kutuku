@@ -50,14 +50,16 @@ Log in with `admin@example.com` / `Admin@123`, then change the password under **
 ### Android app (`android/`)
 | Area | Screens / behaviour |
 |---|---|
-| Auth | Mobile + OTP login with a resend timer; first-time profile step; session stored in DataStore; auto-logout on expiry |
-| Home | Auto-scrolling banner carousel (banners can open a product, category or URL), categories, Featured / Popular / New arrivals, pull-to-refresh |
-| Catalog | Category tree with subcategories; product grid with infinite scroll; search; filter by price range; sort by newest, popular or price |
-| Product | Image gallery, weight/quantity variant chips with per-variant price and MRP, live stock ("Only 3 left"), specifications, related products, wishlist |
-| Cart | Quantity stepper, stock validation, coupon entry and coupon list, free-delivery nudge, itemised bill |
-| Checkout | Saved addresses (add/edit, Indian state picker, validation), Razorpay Checkout (UPI, cards, net banking, wallets), server-side payment verification |
-| Orders | Active/past tabs, order tracking timeline, cancellation with reason, reorder, **GST invoice PDF download** |
-| Account | Edit profile (name, email, GSTIN), addresses, wishlist, payment history, logout, **delete account** (required by Google Play) |
+| Design | Every screen follows the **Kutuku eCommerce UI kit** (Figma): Outfit font, Kutuku purple palette, 24 dp margins, pill buttons, bottom sheets |
+| Onboarding & auth | Splash, 3 onboarding slides (editable in admin), Create Account → email/phone verification code → Register Success, Login with password **or** one-time code, Forgot Password → code → Create New Password. Google/Facebook buttons are shown but need OAuth keys before they work |
+| Home | Home / Category tabs, greeting with avatar, unread-notification dot, promo banners, New Arrivals grid, category cards |
+| Search & catalog | Search with recent searches and Popular Search (Hot / New / Popular tags), results with All / Latest / Most Popular / Cheapest chips, matching store card, Filter By sheet (price range, colour, location) |
+| Stores | Store page with Follow, Main Page / All Products / Best Sell tabs, store banners, chat button |
+| Product | Photo gallery, rating, colour swatches and sizes, quantity stepper with stock, Read More description, store row with Follow, favourite, Add to Cart |
+| Cart & payment | My Cart with checkboxes (only selected items are ordered), promo code, Payment screen with address map, Change Payment Method sheet (UPI / Card / Net Banking / Wallet → opens Razorpay on that method), Order Successfully sheet, address chooser and form |
+| Orders | My Order / History tabs, order detail, Order Track with courier and progress steps, Received Order / Mark as Done, cancel with reason, Buy Again, **GST invoice PDF download** |
+| Inbox | Notification list (respects notification settings), Message list with followed-store Activities, chat with stores and support (product cards in chat) |
+| Settings | Edit Profile (photo upload), Change Password, Notifications toggles, Security (Face ID / Touch ID app lock, Remember Password), Language, Help & Support FAQ, Legal and Policies, Logout dialog, addresses, payment history, **delete account** |
 | Push | FCM: order placed, confirmed, packed, shipped, out for delivery and delivered notifications, plus promotional broadcasts; tapping one opens the order or product |
 
 ### Admin panel (`admin/`)
@@ -80,7 +82,8 @@ Dashboard (sales today/month/total, 30-day chart, low-stock alerts, recent order
 |---|---|
 | Razorpay **live** Key ID + Secret, and a webhook secret | `backend/.env` → `RAZORPAY_*`. In the Razorpay Dashboard → Webhooks, add `https://api.yourstore.com/api/v1/webhooks/razorpay` with events `payment.captured` and `payment.failed` |
 | SMS provider for OTP (MSG91 recommended for India; DLT-registered template) | `OTP_PROVIDER=msg91`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID` |
-| Firebase project | Android: download `google-services.json` into `android/app/`. Backend: service-account JSON path in `FIREBASE_SERVICE_ACCOUNT` |
+| Email for verification codes (any SMTP service) | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` |
+| Firebase project | Android: download `google-services.json` into `android/app/`. Backend: service-account JSON path in `FIREBASE_SERVICE_ACCOUNT`, or the JSON itself in `FIREBASE_SERVICE_ACCOUNT_JSON` (for Vercel) |
 | Store legal details (name, address, GSTIN, state) | `STORE_*` in `backend/.env`; these are printed on invoices |
 | Domain names | e.g. `api.yourstore.com`, `admin.yourstore.com` |
 | Google Play developer account | One-time $25 fee, paid by the client |
@@ -164,4 +167,4 @@ The backend uses Node.js. The proposal allowed Laravel or Node.js, and Node keep
 ## 5. Testing status
 - **Backend:** tested end to end against MariaDB: OTP login, catalog, search, filters, cart, stock limits, coupons (including per-customer reuse), order placement with stock reservation, payment signature verification (valid and invalid), webhook confirmation (including replay), payment failure releasing stock, cancellation with refund and restock, reorder, invoice PDF, admin product CRUD, bulk import with validation errors, exports, status workflow, partial refunds, reports, customer blocking, and role checks.
 - **Admin panel:** production build tested in a browser against the API; no console errors.
-- **Android:** written for current stable libraries (AGP 8.7, Kotlin 2.0.21, Compose BOM 2024.12). It was **not** compiled in the build sandbox because Google's Maven repository wasn't reachable there. Expect the first Gradle sync in Android Studio to work, and fix any small compile issues it reports before QA on real devices. Run the full payment flow with Razorpay **test** keys before going live.
+- **Android:** built on every push by GitHub Actions (`.github/workflows/android-apk.yml`). The debug APK is published to the `android-latest` release. Every screen is also rendered at 375×812 dp with Roborazzi (`app/src/test/.../ScreenshotTest.kt`) to the `screens-latest` release, for comparison with the Figma frames. Run the full payment flow with Razorpay **test** keys on a real device before going live.
