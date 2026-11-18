@@ -1,6 +1,4 @@
 node_modules/
-.env
-.env.*
 !.env.example
 .vercel/
 admin/dist/
@@ -17,3 +15,4 @@ android/app/google-services.json
 .idea/
 *.iml
 .DS_Store
+config.bat
