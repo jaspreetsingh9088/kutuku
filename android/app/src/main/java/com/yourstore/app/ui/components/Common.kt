@@ -163,7 +163,7 @@ fun KButton(
         if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White)
         else {
             if (icon != null) { Icon(icon, null, Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)) }
-            Text(text, fontSize = fontSize.sp, fontWeight = FontWeight.Medium, fontFamily = Outfit)
+            Text(text, fontSize = fontSize.sp, fontWeight = FontWeight.Medium, fontFamily = Outfit, color = Color.White)
         }
     }
 }

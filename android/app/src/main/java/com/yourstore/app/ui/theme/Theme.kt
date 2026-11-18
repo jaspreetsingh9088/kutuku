@@ -56,7 +56,8 @@ private val Light = lightColorScheme(
     error = Warning, errorContainer = HotBg,
 )
 
-private fun t(size: Int, weight: FontWeight = FontWeight.Normal, color: Color = Ink, line: Int = (size * 1.4).toInt()) =
+// Colour is left unspecified so buttons, chips and app bars can supply their own content colour.
+private fun t(size: Int, weight: FontWeight = FontWeight.Normal, color: Color = Color.Unspecified, line: Int = (size * 1.4).toInt()) =
     TextStyle(fontFamily = Outfit, fontSize = size.sp, fontWeight = weight, color = color, lineHeight = line.sp)
 
 private val AppTypography = Typography(
@@ -66,9 +67,9 @@ private val AppTypography = Typography(
     titleLarge = t(20, FontWeight.SemiBold),                      // product name on detail
     titleMedium = t(18, FontWeight.SemiBold),                     // section titles ("New Arrivals", "Address")
     titleSmall = t(16, FontWeight.Medium),                        // list titles, product names
-    bodyLarge = t(15, color = Ink),
-    bodyMedium = t(14, color = Ink),
-    bodySmall = t(12, color = InkHint, line = 18),
+    bodyLarge = t(15),
+    bodyMedium = t(14),
+    bodySmall = t(12, line = 18),
     labelLarge = t(16, FontWeight.Medium),                        // buttons
     labelMedium = t(14, FontWeight.Medium),                       // field labels
     labelSmall = t(11, FontWeight.Medium),
