@@ -36,6 +36,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -231,7 +232,7 @@ fun KField(
                         if (value.isEmpty()) Text(placeholder, fontSize = 14.sp, color = InkHint, maxLines = 1)
                         inner()
                     }
-                    if (isPassword) Icon(if (visible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, "Show password",
+                    if (isPassword) Icon(if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, "Show password",
                         Modifier.size(22.dp).clickable { visible = !visible }, tint = InkHint)
                     trailing?.invoke()
                 }
@@ -314,7 +315,7 @@ fun KCheckbox(checked: Boolean, onChange: (Boolean) -> Unit, size: Dp = 20.dp) {
 @Composable
 fun KSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
     Switch(
-        checked = checked, onCheckedChange = onChange,
+        checked = checked, onCheckedChange = onChange, modifier = Modifier.scale(0.72f),
         colors = SwitchDefaults.colors(
             checkedThumbColor = Color.White, checkedTrackColor = Brand, checkedBorderColor = Brand,
             uncheckedThumbColor = Color.White, uncheckedTrackColor = Color(0xFFD9DBE3), uncheckedBorderColor = Color(0xFFD9DBE3),

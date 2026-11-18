@@ -221,10 +221,10 @@ fun ProductDetailContent(
         Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White).navigationBarsPadding()
             .padding(horizontal = PagePad, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(inr((selected?.price ?: p.price ?: 0.0) * qty), color = Brand, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+                Text(inr((selected?.price ?: p.price ?: 0.0) * qty).removeSuffix(".00"), color = Brand, fontSize = if (qty > 1) 24.sp else 28.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
                 if (selected != null && selected.mrp > selected.price) StrikePrice(selected.mrp * qty, selected.price * qty)
             }
-            KButton(if (selected?.inStock != false) "Add to Cart" else "Out of stock", onAdd, Modifier.width(190.dp),
+            KButton(if (selected?.inStock != false) "Add to Cart" else "Out of stock", onAdd, Modifier.width(180.dp),
                 enabled = selected?.inStock == true, loading = adding, icon = Icons.Outlined.ShoppingBag)
         }
     }
